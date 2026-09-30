@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Expense::class, Shop::class, ShopLocation::class, Receipt::class, ReceiptItem::class],
-    version = 4,
+    entities = [Expense::class, Shop::class, ShopLocation::class, Receipt::class, ReceiptItem::class, CommonName::class],
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -17,6 +17,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
     abstract fun shopDao(): ShopDao
     abstract fun receiptDao(): ReceiptDao
+    abstract fun commonNameDao(): CommonNameDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -82,16 +83,33 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATION_3_4 = object : Migration(3, 4) {
+        /** v3 → v4: add category column to receipt_items. */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE receipt_items ADD COLUMN category TEXT")
+            }
+        }
+
+        /** v4 → v5: add common_names table for LLM-resolved product name pool. */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS common_names (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        usageCount INTEGER NOT NULL DEFAULT 1
+                    )"""
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_common_names_name ON common_names(name)"
+                )
             }
         }
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(context, AppDatabase::class.java, "budget.db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }

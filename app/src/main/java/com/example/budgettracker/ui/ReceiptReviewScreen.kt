@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -24,12 +25,14 @@ import com.example.budgettracker.receipt.Level0Doc
 import com.example.budgettracker.receipt.ParsedReceipt
 import com.example.budgettracker.receipt.parsePrice
 import com.example.budgettracker.ui.theme.*
+import kotlinx.coroutines.launch
 
 /** Mutable row for editing in the review table. */
 private data class ItemRow(
     val id: Int,
     var name: String,
-    var priceText: String
+    var priceText: String,
+    var commonName: String? = null
 ) {
     val price: Double? get() = parsePrice(priceText) ?: priceText.replace(',', '.').toDoubleOrNull()
 }
@@ -56,6 +59,8 @@ fun ReceiptReviewScreen(
     var editingRowId by remember { mutableStateOf<Int?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var confirmError by remember { mutableStateOf<String?>(null) }
+    var resolvingNames by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val itemsTotal = rows.sumOf { it.price ?: 0.0 }
     val detectedTotal = parsed.detectedTotal
@@ -71,6 +76,35 @@ fun ReceiptReviewScreen(
                     }
                 },
                 actions = {
+                    // ✨ Resolve common names via LLM
+                    IconButton(
+                        onClick = {
+                            if (!resolvingNames && rows.isNotEmpty()) {
+                                resolvingNames = true
+                                scope.launch {
+                                    val resolved = viewModel.resolveNamesForReview(rows.map { it.name })
+                                    rows = rows.toMutableList().also { list ->
+                                        resolved.forEach { (idx, commonName) ->
+                                            val i = idx - 1
+                                            if (i in list.indices) list[i] = list[i].copy(commonName = commonName)
+                                        }
+                                    }
+                                    resolvingNames = false
+                                }
+                            }
+                        },
+                        enabled = !resolvingNames && rows.isNotEmpty()
+                    ) {
+                        if (resolvingNames) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = Positive
+                            )
+                        } else {
+                            Icon(Icons.Filled.AutoAwesome, "Resolve names", tint = Color(0xFF888888))
+                        }
+                    }
                     IconButton(onClick = { viewModel.copyLevel0Json(doc) }) {
                         Icon(Icons.Filled.DataObject, "Copy Level 0 JSON", tint = Color.White)
                     }
@@ -116,7 +150,7 @@ fun ReceiptReviewScreen(
                                         confirmError = "Invalid price for \"${row.name}\""
                                         return@Button
                                     }
-                                    row.name to p
+                                    Triple(row.name, p, row.commonName)
                                 }
                                 if (items.isEmpty()) {
                                     confirmError = "Add at least one item"
@@ -216,7 +250,7 @@ fun ReceiptReviewScreen(
             onConfirm = { name, price ->
                 rows = rows.toMutableList().also { list ->
                     val idx = list.indexOfFirst { it.id == rowId }
-                    if (idx >= 0) list[idx] = list[idx].copy(name = name, priceText = price)
+                    if (idx >= 0) list[idx] = list[idx].copy(name = name, priceText = price, commonName = null)
                 }
                 editingRowId = null
             }
@@ -253,12 +287,23 @@ private fun ReviewItemRow(
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = row.name,
-            color = Color.White,
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = row.name,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+            val commonName = row.commonName
+            if (!commonName.isNullOrBlank()) {
+                Text(
+                    text = commonName,
+                    color = Color(0xFF6A9B6A),
+                    fontSize = 11.sp,
+                    fontStyle = FontStyle.Italic
+                )
+            }
+        }
         Text(
             text = if (priceValid) "€%.2f".format(row.price) else row.priceText,
             color = if (priceValid) Positive else Negative,

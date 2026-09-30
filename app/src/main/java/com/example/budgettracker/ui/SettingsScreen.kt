@@ -136,7 +136,7 @@ fun SettingsScreen(
 
             Text(
                 "Used to auto-generate a processor config when no matching parser is found. " +
-                        "Defaults to Gemini 2.5 Flash (free tier). Leave URL blank to use the default.",
+                        "Defaults to Gemini 3.8 Flash (free tier). Leave URL blank to use the default.",
                 fontSize = 12.sp,
                 color = Color(0xFF555555),
                 lineHeight = 18.sp

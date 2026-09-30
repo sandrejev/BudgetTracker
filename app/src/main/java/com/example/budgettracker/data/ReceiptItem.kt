@@ -18,5 +18,6 @@ data class ReceiptItem(
     val totalPrice: Double,
     val qty: String? = null,
     val sortOrder: Int = 0,
+    /** Short human-readable common name assigned by LLM (e.g. "whole milk"). */
     val category: String? = null
 )

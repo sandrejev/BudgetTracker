@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
+import kotlinx.coroutines.launch
 import com.example.budgettracker.data.ReceiptItem
 import com.example.budgettracker.data.ReceiptWithItems
 import com.example.budgettracker.receipt.Level0Doc
@@ -40,6 +42,8 @@ fun ReceiptDetailScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var showReprocessDialog by remember { mutableStateOf(false) }
     var reprocessResult by remember { mutableStateOf<String?>(null) }
+    var resolvingNames by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val receipt = receiptData?.receipt
     val items = receiptData?.items ?: emptyList()
@@ -57,6 +61,30 @@ fun ReceiptDetailScreen(
                 },
                 actions = {
                     if (receipt != null) {
+                        // Auto-resolve common names via LLM
+                        IconButton(
+                            onClick = {
+                                if (!resolvingNames) {
+                                    resolvingNames = true
+                                    scope.launch {
+                                        viewModel.resolveCommonNamesWithLlm(items)
+                                        resolvingNames = false
+                                        reprocessResult = "✓ Common names resolved"
+                                    }
+                                }
+                            },
+                            enabled = !resolvingNames && items.isNotEmpty()
+                        ) {
+                            if (resolvingNames) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Positive
+                                )
+                            } else {
+                                Icon(Icons.Filled.AutoAwesome, "Resolve names", tint = Color(0xFF888888))
+                            }
+                        }
                         IconButton(onClick = { showReprocessDialog = true }) {
                             Icon(Icons.Filled.Refresh, "Reprocess", tint = Color(0xFF888888))
                         }
@@ -116,7 +144,17 @@ fun ReceiptDetailScreen(
                         .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(item.name, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        if (!item.category.isNullOrBlank()) {
+                            Text(
+                                item.category,
+                                color = Color(0xFF6A9B6A),
+                                fontSize = 11.sp,
+                                fontStyle = FontStyle.Italic
+                            )
+                        }
+                    }
                     Text(
                         "€%.2f".format(item.totalPrice),
                         color = Positive,
@@ -249,7 +287,7 @@ fun ReceiptDetailScreen(
                                     viewModel.confirmReceiptImport(
                                         shopName = receipt.shopName,
                                         amount = parsed.detectedTotal ?: parsed.items.sumOf { it.price },
-                                        items = parsed.items.map { it.name to it.price },
+                                        items = parsed.items.map { Triple(it.name, it.price, null) },
                                         doc = doc,
                                         parsedReceipt = parsed
                                     )

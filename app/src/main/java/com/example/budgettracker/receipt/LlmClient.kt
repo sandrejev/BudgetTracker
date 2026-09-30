@@ -14,7 +14,7 @@ import java.net.URL
 object LlmClient {
 
     private const val DEFAULT_GEMINI_URL =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
 
     /**
      * Sends [prompt] to the configured LLM and returns the raw text response.

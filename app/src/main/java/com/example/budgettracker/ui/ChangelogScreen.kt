@@ -7,8 +7,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -17,7 +19,7 @@ import com.example.budgettracker.ui.theme.CardDark
 import com.example.budgettracker.ui.theme.Positive
 
 // ---------------------------------------------------------------------------
-// Changelog data
+// Changelog data model
 // ---------------------------------------------------------------------------
 
 private data class ChangelogEntry(
@@ -27,57 +29,41 @@ private data class ChangelogEntry(
     val changes: List<String>
 )
 
-private val CHANGELOG: List<ChangelogEntry> = listOf(
-    ChangelogEntry(
-        version = "1.2.0",
-        date = "2026-09-28",
-        title = "Receipt Pipeline",
-        changes = listOf(
-            "Share receipt images (PNG/JPG) or PDFs directly into the app",
-            "MLKit OCR for images; pdfbox for PDF text extraction",
-            "Level 0 intermediate JSON representation preserves token positions",
-            "Processor configs are JSON files, not code — swap them without rebuilding",
-            "Built-in processors for Lidl, Müller, Rewe and Penny",
-            "Auto-select processor by shop name when adding a receipt",
-            "LLM-assisted processor generation (Gemini free tier by default)",
-            "Configurable LLM API key and endpoint URL in Settings",
-            "Editable receipt review table — fix item names and prices before saving",
-            "Comma and period both work as decimal separators (German locale support)",
-            "Receipt detail view for any past expense — edit or delete individual items",
-            "Reprocess any stored receipt with a different processor",
-            "Manage processors screen — view JSON, import from clipboard, delete, copy LLM prompt",
-            "Export and import all data (expenses, receipts, shops) as a single JSON file"
-        )
-    ),
-    ChangelogEntry(
-        version = "1.1.0",
-        date = "2026-09",
-        title = "Shop Management",
-        changes = listOf(
-            "Shop management screen — add, edit and delete shops",
-            "Shop logos fetched automatically via Clearbit",
-            "Pin shop locations on an osmdroid map (no API key required)",
-            "Multiple locations per shop for multi-branch stores",
-            "GPS-based nearby-shop detection when logging an expense",
-            "Shop name shown on every expense row and in month detail"
-        )
-    ),
-    ChangelogEntry(
-        version = "1.0.0",
-        date = "2026-09",
-        title = "Initial Release",
-        changes = listOf(
-            "Monthly budget limit with per-day allowance calculation",
-            "Balance = days elapsed × daily rate − total spent",
-            "Add expenses manually with an amount and optional note",
-            "Daily spending bar chart with tap-to-expand day",
-            "Month history screen listing all recorded months",
-            "Month detail with collapsible day groups",
-            "Edit and delete individual expenses",
-            "Clear all entries for the current month"
-        )
-    )
-)
+/**
+ * Parses changelog.md from assets.
+ * Each section starts with: ## vX.Y.Z — YYYY-MM-DD — Title
+ * Change lines start with: - text
+ */
+private fun parseChangelog(md: String): List<ChangelogEntry> {
+    val headerRegex = Regex("""^##\s+v(\S+)\s+[—-]+\s+(\S+)\s+[—-]+\s+(.+)$""")
+    val entries = mutableListOf<ChangelogEntry>()
+    var currentVersion = ""
+    var currentDate = ""
+    var currentTitle = ""
+    val currentChanges = mutableListOf<String>()
+
+    fun flush() {
+        if (currentVersion.isNotEmpty()) {
+            entries.add(ChangelogEntry(currentVersion, currentDate, currentTitle, currentChanges.toList()))
+            currentChanges.clear()
+        }
+    }
+
+    for (line in md.lines()) {
+        val trimmed = line.trim()
+        val headerMatch = headerRegex.matchEntire(trimmed)
+        if (headerMatch != null) {
+            flush()
+            currentVersion = headerMatch.groupValues[1]
+            currentDate = headerMatch.groupValues[2]
+            currentTitle = headerMatch.groupValues[3].trim()
+        } else if (trimmed.startsWith("- ") && currentVersion.isNotEmpty()) {
+            currentChanges.add(trimmed.removePrefix("- ").trim())
+        }
+    }
+    flush()
+    return entries
+}
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -86,6 +72,16 @@ private val CHANGELOG: List<ChangelogEntry> = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangelogScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val changelog = remember {
+        try {
+            val text = context.assets.open("changelog.md").bufferedReader().use { it.readText() }
+            parseChangelog(text)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     Scaffold(
         containerColor = BackgroundDark,
         topBar = {
@@ -110,6 +106,18 @@ fun ChangelogScreen(onBack: () -> Unit) {
             )
         }
     ) { paddingValues ->
+        if (changelog.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                Text("No changelog available.", color = Color(0xFF666666))
+            }
+            return@Scaffold
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -119,7 +127,7 @@ fun ChangelogScreen(onBack: () -> Unit) {
         ) {
             item { Spacer(Modifier.height(4.dp)) }
 
-            items(CHANGELOG) { entry ->
+            items(changelog) { entry ->
                 ChangelogCard(entry)
             }
 
