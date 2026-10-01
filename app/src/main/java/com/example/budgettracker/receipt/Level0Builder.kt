@@ -3,7 +3,8 @@ package com.example.budgettracker.receipt
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Rect
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -32,57 +33,135 @@ object Level0Builder {
 
     /** Build a Level 0 doc from a file-backed URI (the normal app path). */
     suspend fun fromImageUri(context: Context, uri: Uri): Level0Doc {
-        val image = InputImage.fromFilePath(context, uri)
-        val pageWidth = image.width.takeIf { it > 0 } ?: 1080
-        return fromInputImage(image, pageWidth)
+        val bitmap = decodeUpright(context, uri)
+            ?: return fromInputImage(InputImage.fromFilePath(context, uri))
+        return fromBitmap(bitmap)
     }
 
     /**
-     * Build a Level 0 doc directly from a [Bitmap].
-     * Used by instrumented tests so they can load images from assets without
-     * needing a content:// URI.
+     * Build a Level 0 doc directly from a [Bitmap] (also used by the instrumented tests).
+     *
+     * OCR runs twice: on a black-and-white version of the receipt (coloured print such as
+     * Lidl's blue discount lines turned black, see [OcrImage.binarize]) and on the image as
+     * it is. The black-and-white words are used, plus any word only the second pass found.
      */
     suspend fun fromBitmap(bitmap: Bitmap): Level0Doc {
-        val image = InputImage.fromBitmap(bitmap, 0)
         val pageWidth = bitmap.width.takeIf { it > 0 } ?: 1080
-        return fromInputImage(image, pageWidth)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            val original = recognize(recognizer, InputImage.fromBitmap(bitmap, 0), "orig")
+            val blackAndWhite = try {
+                val scale = OcrImage.scaleFor(bitmap.width, bitmap.height)
+                val bw = blackAndWhite(bitmap, scale)
+                with(OcrImage) { recognize(recognizer, InputImage.fromBitmap(bw, 0), "bw").map { it.unscaled(scale) } }
+            } catch (e: OutOfMemoryError) {
+                emptyList()  // a huge photo: the original pass alone still works
+            }
+            return buildFromWords(OcrImage.mergeWords(blackAndWhite, original), pageWidth)
+        } finally {
+            recognizer.close()
+        }
     }
 
-    /** Common MLKit OCR path shared by [fromImageUri] and [fromBitmap]. */
-    private suspend fun fromInputImage(image: InputImage, pageWidth: Int): Level0Doc {
-        val recognizer: TextRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    /** Fallback when the image can't be decoded as a Bitmap: one OCR pass, as ML Kit reads it. */
+    private suspend fun fromInputImage(image: InputImage): Level0Doc {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            return buildFromWords(recognize(recognizer, image, "orig"), image.width.takeIf { it > 0 } ?: 1080)
+        } finally {
+            recognizer.close()
+        }
+    }
 
+    /** Scaled black-and-white copy of [bitmap] for OCR. */
+    private fun blackAndWhite(bitmap: Bitmap, scale: Float): Bitmap {
+        val (w, h) = OcrImage.scaledSize(bitmap.width, bitmap.height, scale)
+        val scaled = if (scale == 1f) bitmap else Bitmap.createScaledBitmap(bitmap, w, h, true)
+        val pixels = IntArray(w * h)
+        scaled.getPixels(pixels, 0, w, 0, 0, w, h)
+        if (scaled !== bitmap) scaled.recycle()
+        val bw = OcrImage.binarize(pixels, w, h)
+        return Bitmap.createBitmap(bw, w, h, Bitmap.Config.ARGB_8888)
+    }
+
+    /**
+     * Decodes [uri] as a software Bitmap turned upright by its EXIF orientation (camera photos
+     * are often stored sideways). Very large photos are subsampled. Null if it can't be read.
+     */
+    private fun decodeUpright(context: Context, uri: Uri): Bitmap? = try {
+        val resolver = context.contentResolver
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth.toLong() / sample * (bounds.outHeight.toLong() / sample) > MAX_DECODE_PIXELS) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        val orientation = resolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        } ?: ExifInterface.ORIENTATION_NORMAL
+        decoded?.let { rotate(it, orientation) }
+    } catch (e: Exception) {
+        null
+    } catch (e: OutOfMemoryError) {
+        null
+    }
+
+    private const val MAX_DECODE_PIXELS = 16_000_000L
+
+    private fun rotate(bitmap: Bitmap, orientation: Int): Bitmap {
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.postScale(-1f, 1f) }
+            ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
+            else -> return bitmap
+        }
+        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        if (rotated !== bitmap) bitmap.recycle()
+        return rotated
+    }
+
+    /** All words ML Kit finds in [image], with their boxes and confidence. */
+    private suspend fun recognize(recognizer: TextRecognizer, image: InputImage, pass: String): List<OcrImage.Word> {
         val visionText = suspendCancellableCoroutine { cont ->
             recognizer.process(image)
                 .addOnSuccessListener { cont.resume(it) }
                 .addOnFailureListener { cont.resumeWithException(it) }
         }
-
-        // ── Collect all "elements" (words) with bounding boxes ────────────────
-        data class WordBox(val text: String, val rect: Rect)
-
-        val words = mutableListOf<WordBox>()
+        val words = mutableListOf<OcrImage.Word>()
         for (block in visionText.textBlocks) {
             for (line in block.lines) {
                 for (el in line.elements) {
-                    val bbox = el.boundingBox ?: continue
+                    val box = el.boundingBox ?: continue
                     val txt = el.text.trim()
                     if (txt.isBlank()) continue
-                    words += WordBox(txt, bbox)
+                    words += OcrImage.Word(
+                        txt, box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat(),
+                        el.confidence, pass
+                    )
                 }
             }
         }
+        return words
+    }
+
+    /** Groups OCR words into lines and sections. */
+    private fun buildFromWords(words: List<OcrImage.Word>, pageWidth: Int): Level0Doc {
         if (words.isEmpty()) return Level0Doc("png", pageWidth, emptyList())
 
         // ── Cluster words into visual lines by Y centre ───────────────────────
-        val lineHeight = words.map { it.rect.height() }.average().toFloat().coerceAtLeast(10f)
+        val lineHeight = words.map { it.height }.average().toFloat().coerceAtLeast(10f)
         val tolerance = lineHeight * 0.6f
 
-        data class VisLine(val yCentre: Float, val wordList: MutableList<WordBox>)
+        data class VisLine(val yCentre: Float, val wordList: MutableList<OcrImage.Word>)
 
         val visLines = mutableListOf<VisLine>()
-        for (w in words.sortedBy { it.rect.centerY() }) {
-            val yc = w.rect.centerY().toFloat()
+        for (w in words.sortedBy { it.centerY }) {
+            val yc = w.centerY
             val existing = visLines.firstOrNull { Math.abs(it.yCentre - yc) <= tolerance }
             if (existing != null) {
                 existing.wordList += w
@@ -96,9 +175,9 @@ object Level0Builder {
         data class RawLine(val tokens: List<L0Token>)
 
         val rawLines = visLines.map { vl ->
-            val sorted = vl.wordList.sortedBy { it.rect.centerX() }
+            val sorted = vl.wordList.sortedBy { it.centerX }
             val tokens = sorted.map { w ->
-                L0Token(w.text, w.rect.centerX().toFloat() / pageWidth)
+                L0Token(w.text, w.centerX / pageWidth, w.confidence)
             }
             RawLine(tokens)
         }

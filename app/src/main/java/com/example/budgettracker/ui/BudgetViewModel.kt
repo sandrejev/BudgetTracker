@@ -58,7 +58,9 @@ data class ReviewedItem(
     val name: String,
     val price: Double,
     val commonName: String? = null,
-    val category: String? = null
+    val category: String? = null,
+    val quantity: Double = 1.0,
+    val discount: Double? = null
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -482,7 +484,8 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
         val items = parsed.items.mapIndexed { i, item ->
             ReceiptItem(
                 receiptId = receipt.id, name = item.name, totalPrice = item.price, sortOrder = i,
-                aliasId = itemNames.aliasIdFor(item.name)
+                aliasId = itemNames.aliasIdFor(item.name),
+                qty = ReceiptItem.qtyText(item.quantity), discount = item.discount
             )
         }
         receiptRepo.replaceItems(receipt.id, items)
@@ -517,7 +520,10 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
             val aliasId = if (item.commonName.isNullOrBlank()) itemNames.aliasIdFor(item.name)
             else itemNames.assign(item.name, item.commonName, item.category)
                 .also { itemNames.countUsage(item.commonName) }
-            ReceiptItem(receiptId = receiptId, name = item.name, totalPrice = item.price, sortOrder = i, aliasId = aliasId)
+            ReceiptItem(
+                receiptId = receiptId, name = item.name, totalPrice = item.price, sortOrder = i,
+                aliasId = aliasId, qty = ReceiptItem.qtyText(item.quantity), discount = item.discount
+            )
         }
         receiptRepo.replaceItems(receiptId, receiptItems)
         receiptImportState.value = ReceiptImportState.Idle
@@ -569,7 +575,7 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Copy the Level 0 JSON of a receipt doc to the clipboard. */
     fun copyLevel0Json(doc: Level0Doc) {
-        copyToClipboard(doc.toJsonString(indent = 2), "Level 0 JSON")
+        copyToClipboard(doc.toJsonString(), "Level 0 JSON")
     }
 
     // ── Export / Import ────────────────────────────────────────────────────────

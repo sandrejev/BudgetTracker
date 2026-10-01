@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Expense::class, Shop::class, ShopLocation::class, Receipt::class, ReceiptItem::class,
         ItemCategory::class, CommonName::class, ItemAlias::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -197,10 +197,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v6 → v7: receipt items get the discount printed below them. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE receipt_items ADD COLUMN discount REAL")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(context, AppDatabase::class.java, "budget.db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .addCallback(object : Callback() {
                         // Fresh install: start with everyday grocery categories
                         override fun onCreate(db: SupportSQLiteDatabase) = DefaultCategories.insertInto(db)

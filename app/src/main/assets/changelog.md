@@ -1,3 +1,25 @@
+## v1.6.0 — 2026-10-01 — Quantities, Discounts & Better OCR
+
+**Reading receipts**
+- Receipts are read from top to bottom up to the total, so items are no longer lost depending on where the receipt "body" seems to start (fixes Lidl receipts with discounts, Penny and Rewe)
+- Every item has a count: "0,65 x 2" in the item line (Lidl) or "2 Stk x 1,99" below it (Rewe, Penny). A count is checked against the line price and otherwise worked out from the unit price
+- Identical lines (same name, unit price and discount per unit) are grouped into one item with a count; if only one of them is discounted they stay separate
+- Discounts below an item ("Lidl Plus Rabatt -0,59", "Rabatt Getränke -0,32") reduce that item; the total discount for all units is stored
+- Discounts on the whole receipt ("Müller Blüten 2,00") become their own line with a negative price, so the items add up to the total
+- Deposits (Pfand) are items, as they're part of the total
+- Letters and "*" after prices (tax class, Penny / Rewe markers) are ignored
+- Processor settings: new "discountKeywords" and "receiptDiscountKeywords"
+
+**More robust OCR**
+- Photos are also read as a black-and-white image: coloured print (Lidl's blue discount lines) turns black and uneven light or shadows don't hide text; words only one of the two readings found are combined. Photos taken sideways are turned upright
+- Amounts OCR still misses are recovered from the receipt: a discount from the VAT table, a missing item price from the total; "O,79" is read as 0,79
+- Discount labels are recognised with one misread letter ("Rabalt")
+
+**Screens**
+- Receipt item tables have separate Qty and Discount columns; below the item name only its common name and category
+- Swipe left to delete everywhere: receipt items, common names, receipt texts of a common name, categories, shops and shop locations (shared data asks for confirmation first)
+- Receipt screen: button to copy the OCR data (compact JSON with each word's position and confidence), e.g. to report parsing problems
+
 ## v1.5.0 — 2026-10-01 — Common Item Names & Categories
 
 - Receipt items now link to a shared "receipt text → common name" table: changing a name changes it on all receipts

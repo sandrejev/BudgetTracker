@@ -3,8 +3,9 @@ package com.example.budgettracker.receipt
 import com.example.budgettracker.data.ShopNameMatcher
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -42,40 +43,8 @@ class ReceiptProcessorTest {
         return ReceiptProcessor.process(doc, config) to expectedJson
     }
 
-    /**
-     * Assert that [result] matches [expectedJson].
-     * Items are checked by index: name (exact) and price (within ±0.005).
-     */
-    private fun assertResult(fixtureName: String, result: ParsedReceipt, expectedJson: JSONObject) {
-        // ── Total ─────────────────────────────────────────────────────────────
-        if (expectedJson.has("total") && !expectedJson.isNull("total")) {
-            val expectedTotal = expectedJson.getDouble("total")
-            assertNotNull("[$fixtureName] expected a total but got null", result.detectedTotal)
-            assertEquals(
-                "[$fixtureName] total",
-                expectedTotal,
-                result.detectedTotal!!,
-                0.005
-            )
-        } else {
-            assertNull("[$fixtureName] expected no total but got ${result.detectedTotal}", result.detectedTotal)
-        }
-
-        // ── Items ─────────────────────────────────────────────────────────────
-        val expectedItems = expectedJson.getJSONArray("items")
-        assertEquals(
-            "[$fixtureName] item count",
-            expectedItems.length(),
-            result.items.size
-        )
-
-        for (i in 0 until expectedItems.length()) {
-            val exp = expectedItems.getJSONObject(i)
-            val act = result.items[i]
-            assertEquals("[$fixtureName] items[$i].name", exp.getString("name"), act.name)
-            assertEquals("[$fixtureName] items[$i].price", exp.getDouble("price"), act.price, 0.005)
-        }
-    }
+    private fun assertResult(fixtureName: String, result: ParsedReceipt, expectedJson: JSONObject) =
+        assertReceipt(fixtureName, result, expectedJson)
 
     // ── Tests ─────────────────────────────────────────────────────────────────
 
@@ -91,13 +60,12 @@ class ReceiptProcessorTest {
 
     /**
      * REWE receipt with:
-     * - quantity sub-lines ("2 Stk x 0,99") → excluded by "stk" keyword
-     * - EUR/Pfand deposit line                → excluded by "eur" and "pfand" keywords
-     * - PAYBACK loyalty-points line           → excluded by "payback" keyword
-     * Verifies the correct 3 items are extracted and excluded lines are ignored.
+     * - quantity sub-line ("2 Stk x 0,99")  → quantity 2 of the item above
+     * - EUR/Pfand deposit line              → an item (deposits are part of the total)
+     * - PAYBACK loyalty-points line         → excluded by "payback" keyword
      */
     @Test
-    fun reweExcludesStk_Pfand_Payback() {
+    fun reweQuantityLinePfandAndPaybackExclusion() {
         val (result, expected) = loadAndProcess("rewe_with_stk")
         assertResult("rewe_with_stk", result, expected)
     }
@@ -105,8 +73,7 @@ class ReceiptProcessorTest {
     /**
      * Lidl receipt where items live in the "header" section and the total
      * ("Zu zahlen") is in the "body" section.
-     * A rabatt (discount) line in the header is excluded by keyword.
-     * Verifies [ProcessorConfig.LIDL] with cross-section scanning.
+     * The "RABATT AKTION -0,30" line reduces the item above it.
      */
     @Test
     fun lidlItemsInHeaderSectionTotalInBody() {
@@ -119,7 +86,7 @@ class ReceiptProcessorTest {
      * - Prices use no-space VAT suffix: "2,79a" → 2.79.
      *   Verifies [parsePrice] strips the suffix even without preceding whitespace.
      * - "Zwischensumme" subtotal line excluded by keyword.
-     * - "Müller Blüten" loyalty-discount line excluded by "blüten" keyword.
+     * - "Müller Blüten" loyalty discount on the whole receipt → line with a negative price.
      * - "Kartenzahlung" payment-confirmation line excluded by "kartenzahlung" keyword.
      * - Total "ZU BEZAHLEN" detected correctly (1,98 after 2,00 discount).
      */
@@ -140,6 +107,123 @@ class ReceiptProcessorTest {
     fun lidlEbonPdfFormatAllItemsIncludingPfand() {
         val (result, expected) = loadAndProcess("lidl_ebon")
         assertResult("lidl_ebon", result, expected)
+    }
+
+    /**
+     * Lidl receipt (lidl_3.png) with discounts below items ("Lidl Plus Rabatt",
+     * "Rabatt Getränke"), quantities in the item line ("0,65 x 2") and items on both sides
+     * of the header/body boundary (Level0Builder starts the body at the first discount line).
+     * The fixture is hand-made from the image, not real ML Kit output.
+     */
+    @Test
+    fun lidlDiscountsQuantitiesAndItemsAcrossSections() {
+        val (result, expected) = loadAndProcess("lidl_discounts")
+        assertResult("lidl_discounts", result, expected)
+    }
+
+    @Test
+    fun identicalItemsAreGroupedButNotWithADifferentDiscount() {
+        val items = listOf(
+            ParsedItem("Joghurt", 0.49),
+            ParsedItem("Pfand 0,25 EM", 0.25),
+            ParsedItem("Joghurt", 0.49),
+            ParsedItem("Joghurt", 0.29, discount = 0.20),   // discount only on the third one
+            ParsedItem("Pfand 0,25 EM", 0.50, quantity = 2.0),
+            ParsedItem("Joghurt", 0.59)                     // different price
+        )
+        val grouped = groupItems(items)
+        assertEquals(4, grouped.size)
+        assertEquals(ParsedItem("Joghurt", 0.98, "\n", quantity = 2.0), grouped[0])
+        assertEquals(3.0, grouped[1].quantity, 0.0)
+        assertEquals(0.75, grouped[1].price, 0.0)
+        assertEquals(0.25, grouped[1].unitPrice, 0.0)
+        assertEquals(ParsedItem("Joghurt", 0.29, discount = 0.20), grouped[2])
+        assertEquals(0.49, grouped[2].unitPrice, 0.0)
+        assertEquals(0.59, grouped[3].price, 0.0)
+    }
+
+    /** Like lidl_discounts, but as the phone's OCR read it: the "2" of "0,65 x 2" is missing. */
+    @Test
+    fun lidlQuantityWithMissingCountIsDerivedFromPrice() {
+        val l0 = resourceText("/fixtures/lidl_discounts.l0.json")
+            .replace("""{"t": "x", "x": 0.648}, {"t": "2", "x": 0.735}, {"t": "1,30"""", """{"t": "x", "x": 0.648}, {"t": "1,30"""")
+        require("{\"t\": \"1,30\"" in l0 && "{\"t\": \"2\", \"x\": 0.735}, {\"t\": \"1,30\"" !in l0) { "fixture changed" }
+        val result = ReceiptProcessor.process(Level0Doc.fromJsonString(l0), ProcessorConfig.LIDL)
+        val cola = result.items.single { it.name == "Cola 0% Zucker" }
+        assertEquals(2.0, cola.quantity, 0.0)
+        assertEquals(0.98, cola.price, 0.005)
+        assertEquals(0.65, cola.unitPrice, 0.0)
+    }
+
+    /** The first discount line of lidl_3 as OCR may read it; Kohlrabi must always end up at 0,00. */
+    @Test
+    fun lidlKohlrabiDiscountSurvivesOcrVariants() {
+        val original = """[{"t": "Lidl", "x": 0.2}, {"t": "Plus", "x": 0.309}, {"t": "Rabatt", "x": 0.44}, {"t": "-0,59", "x": 0.844}],"""
+        val variants = mapOf(
+            "misread keyword" to """[{"t": "Lidl", "x": 0.2}, {"t": "Plus", "x": 0.309}, {"t": "Rabalt", "x": 0.44}, {"t": "-0,59", "x": 0.844}],""",
+            "only Lidl Plus" to """[{"t": "Lidl", "x": 0.2}, {"t": "Plus", "x": 0.309}, {"t": "Rbt", "x": 0.44}, {"t": "-0,59", "x": 0.844}],""",
+            "en dash" to """[{"t": "Lidl", "x": 0.2}, {"t": "Plus", "x": 0.309}, {"t": "Rabatt", "x": 0.44}, {"t": "–0,59", "x": 0.844}],""",
+            "minus apart" to """[{"t": "Lidl", "x": 0.2}, {"t": "Plus", "x": 0.309}, {"t": "Rabatt", "x": 0.44}, {"t": "-", "x": 0.79}, {"t": "0,59", "x": 0.86}],""",
+            "outside column" to """[{"t": "Lidl", "x": 0.2}, {"t": "Plus", "x": 0.309}, {"t": "Rabatt", "x": 0.44}, {"t": "-0,59", "x": 0.78}],""",
+            "amount on next line" to """[{"t": "Lidl", "x": 0.2}, {"t": "Plus", "x": 0.309}, {"t": "Rabatt", "x": 0.44}], [{"t": "-0,59", "x": 0.844}],""",
+            "label unreadable" to """[{"t": "Ldl", "x": 0.2}, {"t": "Pus", "x": 0.309}], [{"t": "-0,59", "x": 0.844}],""",
+        )
+        val base = resourceText("/fixtures/lidl_discounts.l0.json")
+        require(original in base) { "fixture changed" }
+        val expected = JSONObject(resourceText("/fixtures/lidl_discounts.expected.json"))
+        for ((label, line) in variants) {
+            val doc = Level0Doc.fromJsonString(base.replaceFirst(original, line))
+            assertReceipt("lidl_3 $label", ReceiptProcessor.process(doc, ProcessorConfig.LIDL), expected)
+        }
+    }
+
+    /**
+     * lidl_3 as the phone's OCR really read it: the Kohlrabi discount amount and Biokompost's
+     * price are missing (recovered from the VAT table and the total), the "2" counts are
+     * missing (derived from the unit price) and Brot's price reads "O,79".
+     */
+    @Test
+    fun lidl3AsReadOnThePhone() {
+        val doc = Level0Doc.fromJsonString(resourceText("/fixtures/lidl_3_device.l0.json"))
+        val expected = JSONObject(resourceText("/fixtures/lidl_discounts.expected.json"))
+        assertReceipt("lidl_3 device", ReceiptProcessor.process(doc, ProcessorConfig.LIDL), expected)
+    }
+
+    @Test
+    fun discountKeywordsTolerateOneOcrError() {
+        assertTrue(containsKeyword("Lidl Plus Rabalt", listOf("rabatt")))
+        assertTrue(containsKeyword("Rabat Getränke", listOf("rabatt")))
+        assertTrue(containsKeyword("Müller Bluten", listOf("blüten")))
+        assertFalse(containsKeyword("Brot Bauernbag", listOf("rabatt", "preisvorteil")))
+        assertFalse(containsKeyword("Kiwi Gold", listOf("rabatt")))
+        assertEquals(-0.59, parsePrice("– 0,59")!!, 0.0)
+        assertEquals(-0.59, parsePrice("−0,59")!!, 0.0)
+        assertEquals(0.79, parsePrice("O,79")!!, 0.0)
+    }
+
+    @Test
+    fun quantityPatterns() {
+        assertEquals(2.0, findQuantity("2 Stk x 1,99")!!.amount, 0.0)
+        assertEquals(1.99, findQuantity("2 Stk x 1,99")!!.unitPrice, 0.0)
+        assertEquals(2.0, findQuantity("Cola 0% Zucker 0,65 x 2 1,30 B")!!.amount, 0.0)
+        assertEquals(0.16, ParsedItem("Cola 0% Zucker", 0.98, quantity = 2.0, discount = 0.32).unitDiscount, 0.0)
+        assertEquals(0.65, findQuantity("Cola 0% Zucker 0,65 x 2 1,30 B")!!.unitPrice, 0.0)
+        assertEquals(0.436, findQuantity("0,436 kg x 2,99 EUR/kg")!!.amount, 0.0)
+        assertNull(findQuantity("PFAND 0,25 EURO 0,25 A *"))
+        // Quantities are checked against the line price
+        assertEquals(2.0, resolveQuantity("Cola 0% Zucker 0,65 x 2 1,30 B", 1.30)!!, 0.0)
+        assertEquals(2.0, resolveQuantity("2 Stk x 1,99", 3.98)!!, 0.0)
+        assertEquals(0.436, resolveQuantity("0,436 kg x 2,99 EUR/kg", 1.30)!!, 0.0)
+        // OCR missed or misread the count: "0,65 x 1,30" is not 0.65 units, it's 1,30 / 0,65 = 2
+        assertEquals(2.0, resolveQuantity("Cola 0% Zucker 0,65 x 1,30 B", 1.30)!!, 0.0)
+        assertEquals(2.0, resolveQuantity("Cola 0% Zucker 0,65 x Z 1,30 B", 1.30)!!, 0.0)
+        // the count read out of order, after the line price and tax letter
+        assertEquals(2.0, resolveQuantity("Cola 0% Zucker 0,65 x 1,30 2 B", 1.30)!!, 0.0)
+        assertEquals(2.0, resolveQuantity("Cola 0% Zucker 0,65 x 1,30 B 2", 1.30)!!, 0.0)
+        assertNull(resolveQuantity("Cola 0% Zucker 1,30 B", 1.30))
+        assertNull(resolveQuantity("Rucola 125g 0,71 A", 0.71))
+        assertNull(findQuantity("Rucola 125g 0,71 A"))
+        assertEquals(0.25, parsePrice("0,25 A *")!!, 0.0)
     }
 
     /**

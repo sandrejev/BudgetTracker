@@ -35,11 +35,17 @@ object PdfTextExtractor {
             doc.use {
                 val stripper = PDFTextStripper()
                 stripper.sortByPosition = true
-                val text = stripper.getText(doc)
-                text.lines().map { it.trimEnd() }.filter { it.isNotBlank() }
+                textToLines(stripper.getText(doc))
             }
         }
     }
+
+    /**
+     * Splits PDFTextStripper output into lines (trailing spaces trimmed, blank lines removed).
+     * Shared with the JVM tests, which extract the text with desktop PDFBox.
+     */
+    fun textToLines(text: String): List<String> =
+        text.lines().map { it.trimEnd() }.filter { it.isNotBlank() }
 
     /**
      * Full pipeline: PDF URI → Level 0 document.

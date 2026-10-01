@@ -155,40 +155,44 @@ private fun ShopItem(
     val locations = shopWithLocations.locations
 
     Column {
-        // Main row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Main row (swipe left to delete the shop)
+        SwipeToDeleteWrapper(
+            onDelete = onDelete,
+            confirmTitle = "Delete \"${shop.name}\"?",
+            confirmText = if (locations.isEmpty()) null
+                else "Its ${locations.size} saved location(s) are deleted too."
         ) {
-            // Logo
-            ShopLogo(name = shop.name, logoUri = shop.logoUri)
-            Spacer(Modifier.width(12.dp))
-            // Name + location count
-            Column(modifier = Modifier.weight(1f)) {
-                Text(shop.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                if (locations.isNotEmpty()) {
-                    Text(
-                        "${locations.size} location${if (locations.size > 1) "s" else ""}",
-                        color = Color(0xFF666666),
-                        fontSize = 12.sp
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Logo
+                ShopLogo(name = shop.name, logoUri = shop.logoUri)
+                Spacer(Modifier.width(12.dp))
+                // Name + location count
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(shop.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    if (locations.isNotEmpty()) {
+                        Text(
+                            "${locations.size} location${if (locations.size > 1) "s" else ""}",
+                            color = Color(0xFF666666),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+                // Expand/collapse locations
+                IconButton(onClick = onToggleExpand) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = "Locations",
+                        tint = Color(0xFF666666)
                     )
                 }
-            }
-            // Expand/collapse locations
-            IconButton(onClick = onToggleExpand) {
-                Icon(
-                    imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = "Locations",
-                    tint = Color(0xFF666666)
-                )
-            }
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Filled.Edit, "Edit", tint = Color(0xFF666666), modifier = Modifier.size(18.dp))
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, "Delete", tint = Negative, modifier = Modifier.size(18.dp))
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Filled.Edit, "Edit", tint = Color(0xFF666666), modifier = Modifier.size(18.dp))
+                }
             }
         }
 
@@ -200,11 +204,11 @@ private fun ShopItem(
                     .padding(start = 52.dp, bottom = 8.dp)
             ) {
                 locations.forEach { loc ->
-                    LocationRow(
-                        location = loc,
-                        onEdit = { onEditLocation(loc) },
-                        onDelete = { onDeleteLocation(loc) }
-                    )
+                    key(loc.id) {
+                        SwipeToDeleteWrapper(onDelete = { onDeleteLocation(loc) }) {
+                            LocationRow(location = loc, onEdit = { onEditLocation(loc) })
+                        }
+                    }
                 }
                 // Add location button
                 TextButton(
@@ -261,8 +265,7 @@ private fun ShopLogo(name: String, logoUri: String?) {
 @Composable
 private fun LocationRow(
     location: ShopLocation,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onEdit: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -289,9 +292,6 @@ private fun LocationRow(
         }
         IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
             Icon(Icons.Filled.Edit, "Edit", tint = Color(0xFF555555), modifier = Modifier.size(14.dp))
-        }
-        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Filled.Close, "Delete", tint = Negative, modifier = Modifier.size(14.dp))
         }
     }
 }

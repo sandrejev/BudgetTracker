@@ -98,6 +98,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // org.json is provided by the Android platform at runtime but must be added explicitly for JVM tests
     testImplementation("org.json:json:20231013")
+    // Desktop PDFBox (same version as pdfbox-android) to read the example PDF receipts in JVM tests
+    testImplementation("org.apache.pdfbox:pdfbox:2.0.27")
 
     // Instrumented tests — full pipeline including MLKit OCR, run on device/emulator
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
