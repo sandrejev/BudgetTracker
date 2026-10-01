@@ -97,7 +97,7 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
             val response = LlmClient.generate("Reply with exactly the word: OK", key, url)
             if (response.isNotBlank()) "Connected ✓" else "Empty response from API"
         } catch (e: Exception) {
-            "Error: ${e.message}"
+            "Error: ${e.message?.take(300)}"
         }
     }
 
