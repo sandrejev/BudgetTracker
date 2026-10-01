@@ -48,20 +48,30 @@ enum class MapStyle(
 
     val attribution: String get() = if (mapTilerId == null) OSM_ATTRIBUTION else MAPTILER_ATTRIBUTION
 
+    /**
+     * MapTiler tiles are requested at 2x (512 px images for 256 px tiles): the map scales
+     * tiles to the screen density, and 2x keeps them sharp. OSM only offers 1x.
+     */
     fun tileUrl(zoom: Int, x: Int, y: Int): String =
         if (mapTilerId == null) "https://tile.openstreetmap.org/$zoom/$x/$y.png"
-        else "https://api.maptiler.com/maps/$mapTilerId/256/$zoom/$x/$y.$extension?key=${BuildConfig.MAPTILER_KEY}"
+        else "https://api.maptiler.com/maps/$mapTilerId/256/$zoom/$x/$y@2x.$extension?key=${BuildConfig.MAPTILER_KEY}"
+
+    /**
+     * Parallel downloads: OSM's volunteer servers allow at most 2 per the tile usage
+     * policy; MapTiler is a commercial CDN.
+     */
+    private val maxConcurrentDownloads: Int get() = if (mapTilerId == null) 2 else 8
 
     /** osmdroid tile source for this style; one instance per style so tiles are cached per style. */
     val tileSource: OnlineTileSourceBase by lazy { StyleTileSource(this) }
 
     private class StyleTileSource(private val style: MapStyle) : OnlineTileSourceBase(
-        "BudgetTracker-${style.name}", 0, style.maxZoom, 256, ".${style.extension}",
+        "BudgetTracker-${style.name}-hd", 0, style.maxZoom, 256, ".${style.extension}",
         arrayOf(style.tileUrl(0, 0, 0)), style.attribution,
         // No FLAG_USER_AGENT_NORMALIZED: with it osmdroid would send "<packageName>/<version>"
         // instead of MAP_USER_AGENT, and OSM blocks "com.example.*".
         TileSourcePolicy(
-            2,
+            style.maxConcurrentDownloads,
             TileSourcePolicy.FLAG_NO_BULK or
                 TileSourcePolicy.FLAG_NO_PREVENTIVE or
                 TileSourcePolicy.FLAG_USER_AGENT_MEANINGFUL
@@ -96,6 +106,9 @@ fun configureOsmdroid(context: Context) {
     val config = Configuration.getInstance()
     config.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
     config.userAgentValue = MAP_USER_AGENT
+    // Download threads shared by all styles; each style's TileSourcePolicy limits
+    // how many of them it may use at once (OSM: 2).
+    config.tileDownloadThreads = 8
     // A fresh cache directory, which also drops "Access blocked" tiles cached
     // before the User-Agent was fixed. Android can clear it when space is low.
     config.osmdroidTileCache = File(context.cacheDir, "map-tiles")

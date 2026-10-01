@@ -3,6 +3,7 @@ package com.example.budgettracker.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -29,12 +30,23 @@ import com.example.budgettracker.data.ShopLocation
 import com.example.budgettracker.ui.theme.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.Task
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+
+/** Waits for a location task; (lat, lng), or null if it fails or has no location. */
+private suspend fun awaitLatLng(task: () -> Task<Location>): Pair<Double, Double>? =
+    runCatching {
+        suspendCancellableCoroutine<Pair<Double, Double>?> { cont ->
+            task()
+                .addOnSuccessListener { l -> cont.resume(l?.let { it.latitude to it.longitude }) }
+                .addOnFailureListener { cont.resume(null) }
+        }
+    }.getOrNull()
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
@@ -84,15 +96,7 @@ fun MapPickerScreen(
     LaunchedEffect(locating) {
         if (!locating) return@LaunchedEffect
         val fused = LocationServices.getFusedLocationProviderClient(context)
-        val loc = runCatching {
-            @SuppressLint("MissingPermission")
-            suspendCancellableCoroutine<Pair<Double, Double>?> { cont ->
-                fused.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
-                    .addOnSuccessListener { l -> cont.resume(l?.let { it.latitude to it.longitude }) }
-                    .addOnFailureListener { cont.resume(null) }
-            }
-        }.getOrNull()
-        loc?.let { (lat, lng) ->
+        fun moveTo(lat: Double, lng: Double) {
             centerLat = lat
             centerLng = lng
             val point = GeoPoint(lat, lng)
@@ -100,6 +104,18 @@ fun MapPickerScreen(
             if (jumpToFirstFix) mapViewRef?.controller?.setCenter(point)
             else mapViewRef?.controller?.animateTo(point)
         }
+        // On open, the last known position is available almost instantly, so the map
+        // stops loading tiles for the fallback position while waiting for a fresh fix
+        if (jumpToFirstFix) {
+            @SuppressLint("MissingPermission")
+            val last = awaitLatLng { fused.lastLocation }
+            last?.let { (lat, lng) -> moveTo(lat, lng) }
+        }
+        @SuppressLint("MissingPermission")
+        val current = awaitLatLng {
+            fused.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+        }
+        current?.let { (lat, lng) -> moveTo(lat, lng) }
         jumpToFirstFix = false
         locating = false
     }
@@ -144,6 +160,9 @@ fun MapPickerScreen(
                     MapView(ctx).also { mv ->
                         mapViewRef = mv
                         mv.setTileSource(mapStyle.tileSource)
+                        // Draw tiles at their size in dp: ~5x fewer tiles to download
+                        // on high-density screens, and readable labels
+                        mv.isTilesScaledToDpi = true
                         mv.setMultiTouchControls(true)
                         mv.controller.setZoom(17.0)
                         mv.controller.setCenter(GeoPoint(initialLat, initialLng))
