@@ -1,7 +1,9 @@
 package com.example.budgettracker.ui
 
 import android.content.Context
+import androidx.annotation.DrawableRes
 import com.example.budgettracker.BuildConfig
+import com.example.budgettracker.R
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.tileprovider.tilesource.TileSourcePolicy
@@ -27,26 +29,28 @@ enum class MapStyle(
     val label: String,
     /** MapTiler map id, or null for the OpenStreetMap standard style. */
     private val mapTilerId: String?,
+    /**
+     * Preview picture for the style picker, bundled so Settings shows it instantly:
+     * one tile of central Frankfurt (Römer and the Main), zoom 15, tile 17174/11097.
+     */
+    @param:DrawableRes val previewRes: Int,
     private val extension: String = "png",
     private val maxZoom: Int = 20
 ) {
-    OSM("OpenStreetMap", null, maxZoom = 19),
-    STREETS("Streets", "streets-v2"),
-    STREETS_DARK("Streets dark", "streets-v2-dark"),
-    BASIC("Basic", "basic-v2"),
-    BASIC_DARK("Basic dark", "basic-v2-dark"),
-    BRIGHT("Bright", "bright-v2"),
-    OUTDOOR("Outdoor", "outdoor-v2"),
-    SATELLITE("Satellite", "hybrid", extension = "jpg");
+    OSM("OpenStreetMap", null, R.drawable.map_preview_osm, maxZoom = 19),
+    STREETS("Streets", "streets-v2", R.drawable.map_preview_streets),
+    STREETS_DARK("Streets dark", "streets-v2-dark", R.drawable.map_preview_streets_dark),
+    BASIC("Basic", "basic-v2", R.drawable.map_preview_basic),
+    BASIC_DARK("Basic dark", "basic-v2-dark", R.drawable.map_preview_basic_dark),
+    BRIGHT("Bright", "bright-v2", R.drawable.map_preview_bright),
+    OUTDOOR("Outdoor", "outdoor-v2", R.drawable.map_preview_outdoor),
+    SATELLITE("Satellite", "hybrid", R.drawable.map_preview_satellite, extension = "jpg");
 
     val attribution: String get() = if (mapTilerId == null) OSM_ATTRIBUTION else MAPTILER_ATTRIBUTION
 
     fun tileUrl(zoom: Int, x: Int, y: Int): String =
         if (mapTilerId == null) "https://tile.openstreetmap.org/$zoom/$x/$y.png"
         else "https://api.maptiler.com/maps/$mapTilerId/256/$zoom/$x/$y.$extension?key=${BuildConfig.MAPTILER_KEY}"
-
-    /** One tile of central Frankfurt (Römer and the Main), shown in the style picker. */
-    val previewUrl: String get() = tileUrl(15, 17174, 11097)
 
     /** osmdroid tile source for this style; one instance per style so tiles are cached per style. */
     val tileSource: OnlineTileSourceBase by lazy { StyleTileSource(this) }
