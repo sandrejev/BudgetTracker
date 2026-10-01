@@ -471,9 +471,27 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
         }
 
     /** Reprocess a stored receipt's Level 0 JSON with any given processor config. */
-    fun reprocessReceipt(receipt: Receipt, config: ProcessorConfig): ParsedReceipt {
-        val doc = Level0Doc.fromJsonString(receipt.rawJson)
-        return ReceiptProcessor.process(doc, config)
+    /**
+     * Re-parses a saved receipt with [config]: its items are replaced and the expense amount
+     * becomes the new total. Updates the existing expense and receipt (no new expense).
+     * Returns the number of items; fails without changing anything if none were found.
+     */
+    suspend fun reprocessReceipt(receipt: Receipt, config: ProcessorConfig): Result<Int> = runCatching {
+        val parsed = ReceiptProcessor.process(Level0Doc.fromJsonString(receipt.rawJson), config)
+        require(parsed.items.isNotEmpty()) { "${config.name} found no items on this receipt" }
+        val items = parsed.items.mapIndexed { i, item ->
+            ReceiptItem(
+                receiptId = receipt.id, name = item.name, totalPrice = item.price, sortOrder = i,
+                aliasId = itemNames.aliasIdFor(item.name)
+            )
+        }
+        receiptRepo.replaceItems(receipt.id, items)
+        receiptRepo.updateReceipt(receipt.copy(processorId = parsed.processorId))
+        dao.getExpenseById(receipt.expenseId).first()?.let { expense ->
+            dao.update(expense.copy(amount = parsed.detectedTotal ?: parsed.items.sumOf { it.price }))
+        }
+        refresh()
+        items.size
     }
 
     /** Confirm the reviewed receipt: create expense + receipt + items in DB. */

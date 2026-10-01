@@ -8,6 +8,7 @@
 - Items bought before get their common name instantly, without asking the LLM
 - Edit a receipt item's common name directly in the receipt (applies to all receipts)
 - Export / import includes categories, common names and receipt texts
+- Fixed: reprocessing a saved receipt no longer creates a second expense; it updates the receipt's items and amount
 
 ## v1.4.0 — 2026-10-01 — Shop Name Matching
 

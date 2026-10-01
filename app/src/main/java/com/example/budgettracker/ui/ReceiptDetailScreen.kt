@@ -23,8 +23,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import com.example.budgettracker.data.ReceiptItem
-import com.example.budgettracker.receipt.Level0Doc
-import com.example.budgettracker.receipt.ReceiptProcessor
 import com.example.budgettracker.receipt.parsePrice
 import com.example.budgettracker.ui.theme.*
 
@@ -313,17 +311,13 @@ fun ReceiptDetailScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val doc = Level0Doc.fromJsonString(receipt.rawJson)
-                                    val parsed = ReceiptProcessor.process(doc, config)
-                                    viewModel.confirmReceiptImport(
-                                        shopName = receipt.shopName,
-                                        amount = parsed.detectedTotal ?: parsed.items.sumOf { it.price },
-                                        items = parsed.items.map { ReviewedItem(it.name, it.price) },
-                                        doc = doc,
-                                        parsedReceipt = parsed
-                                    )
-                                    reprocessResult = "✓ Reprocessed with ${config.name}"
                                     showReprocessDialog = false
+                                    scope.launch {
+                                        reprocessResult = viewModel.reprocessReceipt(receipt, config).fold(
+                                            onSuccess = { "✓ Reprocessed with ${config.name}: $it items" },
+                                            onFailure = { "Couldn't reprocess: ${it.message}" }
+                                        )
+                                    }
                                 }
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
