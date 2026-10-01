@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import com.example.budgettracker.ui.icons.*
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,13 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import com.example.budgettracker.data.ReceiptItem
+import com.example.budgettracker.receipt.Level0Doc
 import com.example.budgettracker.receipt.parsePrice
 import com.example.budgettracker.ui.theme.*
 
@@ -95,6 +94,13 @@ fun ReceiptDetailScreen(
                         IconButton(onClick = { showReprocessDialog = true }) {
                             Icon(Icons.Filled.Refresh, "Reprocess", tint = Color(0xFF888888))
                         }
+                        // What OCR read from the receipt (Level 0 JSON), e.g. to report parsing problems
+                        IconButton(onClick = {
+                            viewModel.copyToClipboard(Level0Doc.reformat(receipt.rawJson), "Receipt OCR data")
+                            reprocessResult = "✓ OCR data (Level 0 JSON) copied to the clipboard"
+                        }) {
+                            Icon(Icons.Filled.DataObject, "Copy OCR data", tint = Color(0xFF888888))
+                        }
                     }
                     IconButton(onClick = { showAddDialog = true }) {
                         Icon(Icons.Filled.Add, "Add item", tint = Color.White)
@@ -131,52 +137,23 @@ fun ReceiptDetailScreen(
                     Text(it, color = if (it.startsWith("✓")) Positive else Negative, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Item", color = Color(0xFF888888), fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Text("Price", color = Color(0xFF888888), fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.width(80.dp))
-                    Spacer(Modifier.width(36.dp))
-                }
+                ReceiptItemHeader()
                 HorizontalDivider(color = Color(0xFF2A2A3A))
             }
 
             // Items
             items(items, key = { it.id }) { item ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { editingItem = item }
-                        .padding(vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        val info = itemNames[item.id]
-                        if (info?.commonName != null) {
-                            Text(
-                                listOfNotNull(info.commonName, info.categoryName).joinToString(" · "),
-                                color = Color(0xFF6A9B6A),
-                                fontSize = 11.sp,
-                                fontStyle = FontStyle.Italic
-                            )
-                        }
-                    }
-                    Text(
-                        "€%.2f".format(item.totalPrice),
-                        color = Positive,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.width(80.dp)
+                val info = itemNames[item.id]
+                SwipeToDeleteWrapper(onDelete = { viewModel.deleteReceiptItem(item) }) {
+                    ReceiptItemRow(
+                        name = item.name,
+                        commonName = info?.commonName,
+                        category = info?.categoryName,
+                        quantity = item.quantity,
+                        discount = item.discount,
+                        price = item.totalPrice,
+                        onClick = { editingItem = item }
                     )
-                    IconButton(
-                        onClick = { viewModel.deleteReceiptItem(item) },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Filled.Delete, "Delete", tint = Color(0xFF555555), modifier = Modifier.size(18.dp))
-                    }
                 }
                 HorizontalDivider(color = Color(0xFF1E2229))
             }

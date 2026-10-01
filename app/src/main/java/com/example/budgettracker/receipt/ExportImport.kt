@@ -28,7 +28,7 @@ private val DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
  *
  * Each expense with a receipt embeds the receipt inline:
  * {
- *   "receipt": { rawJson, processorId, items: [ { name, totalPrice, qty } ] }
+ *   "receipt": { rawJson, processorId, items: [ { name, totalPrice, qty, discount } ] }
  * }
  */
 object ExportImport {
@@ -59,6 +59,7 @@ object ExportImport {
                             put("name", item.name)
                             put("totalPrice", item.totalPrice)
                             put("qty", item.qty ?: JSONObject.NULL)
+                            put("discount", item.discount ?: JSONObject.NULL)
                         })
                     }
                     put("items", itemArr)
@@ -214,6 +215,7 @@ object ExportImport {
                         aliasId = names.aliasIdFor(name),
                         totalPrice = iObj.getDouble("totalPrice"),
                         qty = iObj.optString("qty").takeIf { it != "null" && it.isNotEmpty() },
+                        discount = iObj.optDouble("discount").takeUnless { it.isNaN() },
                         sortOrder = j
                     )
                 }

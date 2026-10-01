@@ -121,7 +121,7 @@ fun CommonNamesScreen(
                 colors = itemFieldColors()
             )
             Text(
-                "Tap to edit · long-press to select several and merge them",
+                "Tap to edit · swipe left to delete · long-press to select several and merge them",
                 fontSize = 12.sp, color = Color(0xFF555555),
                 modifier = Modifier.padding(vertical = 8.dp)
             )
@@ -136,40 +136,46 @@ fun CommonNamesScreen(
             LazyColumn(Modifier.fillMaxSize()) {
                 items(rows, key = { it.id }) { row ->
                     val isSelected = row.id in selected
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onLongClick = { toggle(row) },
-                                onClick = { if (selecting) toggle(row) else onOpen(row.id) }
-                            )
-                            .background(if (isSelected) Positive.copy(alpha = 0.12f) else Color.Transparent)
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    SwipeToDeleteWrapper(
+                        onDelete = { viewModel.deleteCommonNames(listOf(row.id)) },
+                        confirmTitle = "Delete \"${row.name}\"?",
+                        confirmText = "Its ${row.aliasCount} receipt text(s) will no longer have a common name."
                     ) {
-                        if (selecting) {
-                            Checkbox(
-                                checked = isSelected,
-                                onCheckedChange = { toggle(row) },
-                                colors = CheckboxDefaults.colors(checkedColor = Positive)
-                            )
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(row.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                            Text(
-                                row.categoryName ?: "No category",
-                                color = if (row.categoryName != null) Color(0xFF6A9B6A) else Color(0xFF666666),
-                                fontSize = 12.sp
-                            )
-                            row.aliasNames?.let {
-                                Text(it, color = Color(0xFF777777), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onLongClick = { toggle(row) },
+                                    onClick = { if (selecting) toggle(row) else onOpen(row.id) }
+                                )
+                                .background(if (isSelected) Positive.copy(alpha = 0.12f) else Color.Transparent)
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (selecting) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { toggle(row) },
+                                    colors = CheckboxDefaults.colors(checkedColor = Positive)
+                                )
                             }
+                            Column(Modifier.weight(1f)) {
+                                Text(row.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    row.categoryName ?: "No category",
+                                    color = if (row.categoryName != null) Color(0xFF6A9B6A) else Color(0xFF666666),
+                                    fontSize = 12.sp
+                                )
+                                row.aliasNames?.let {
+                                    Text(it, color = Color(0xFF777777), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            Text(
+                                "${row.aliasCount}",
+                                color = Color(0xFF666666), fontSize = 12.sp,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
                         }
-                        Text(
-                            "${row.aliasCount}",
-                            color = Color(0xFF666666), fontSize = 12.sp,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
                     }
                     HorizontalDivider(color = Color(0xFF1E2229))
                 }
@@ -412,21 +418,19 @@ fun CommonNameDetailScreen(
                 HorizontalDivider(color = Color(0xFF222830), modifier = Modifier.padding(vertical = 8.dp))
                 Text("Receipt texts converted to this name", fontSize = 13.sp, color = Color(0xFF888888))
                 Text(
-                    "Changes apply to all receipts with these texts.",
+                    "Changes apply to all receipts with these texts. Swipe left to remove one.",
                     fontSize = 12.sp, color = Color(0xFF555555)
                 )
             }
             items(aliases, key = { it.id }) { alias ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
+                // Swiping removes the text from this name (the receipts keep the text)
+                SwipeToDeleteWrapper(onDelete = { viewModel.unlinkAlias(alias.id) }) {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         Text(alias.rawName, color = Color.White, fontSize = 14.sp)
                         Text(
                             "on ${alias.itemCount} receipt line(s)",
                             color = Color(0xFF666666), fontSize = 11.sp
                         )
-                    }
-                    IconButton(onClick = { viewModel.unlinkAlias(alias.id) }) {
-                        Icon(Icons.Filled.Close, "Remove from this name", tint = Color(0xFF777777))
                     }
                 }
                 HorizontalDivider(color = Color(0xFF1E2229))

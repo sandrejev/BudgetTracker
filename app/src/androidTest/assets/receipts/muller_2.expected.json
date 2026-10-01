@@ -1,31 +1,26 @@
 {
   "processorId": "muller",
   "items": [
-    {"name": "ORDNER PP SCHMAL A4", "price": 2.49},
-    {"name": "ORDNER PP SCHMAL A4", "price": 2.49},
-    {"name": "HEFTHUELLE A4 PINK", "price": 0.35},
-    {"name": "REGISTER BLANKO PAP", "price": 1.29},
-    {"name": "REGISTER BLANKO PAP", "price": 1.29},
+    {"name": "ORDNER PP SCHMAL A4", "price": 4.98, "quantity": 2},
+    {"name": "HEFTHUELLE A4 PINK", "price": 0.7, "quantity": 2},
+    {"name": "REGISTER BLANKO PAP", "price": 2.58, "quantity": 2},
     {"name": "HEFT A4 32BL LIN.27", "price": 0.69},
     {"name": "HEFT A4 32BL LIN.28", "price": 2.49},
     {"name": "NOTENHEFT A4 HOCH 8", "price": 1.49},
     {"name": "HEFT A4 32BL LIN,27", "price": 2.49},
     {"name": "HEFT A4 32BL LIN. 25", "price": 2.49},
-    {"name": "HEFT A4 32BL LIN. 21", "price": 2.49},
-    {"name": "HEFT A4 32BL LIN. 21", "price": 2.49},
+    {"name": "HEFT A4 32BL LIN. 21", "price": 4.98, "quantity": 2},
     {"name": "HEFT A4 32 LIN. 22 K", "price": 1.99},
     {"name": "MUTTIHEFT / OKTAVHE", "price": 1.49},
     {"name": "LOCHER LEITZ NEW NE", "price": 5.99},
     {"name": "VOKABELHEFT A5 32BL", "price": 1.29},
     {"name": "SCHNELLHEFTER A4 PP", "price": 2.99},
     {"name": "SICHTH.A4+DURALUX S", "price": 1.99},
-    {"name": "LEITZ PLASTIK-HEFTE", "price": 0.89},
+    {"name": "LEITZ PLASTIK-HEFTE", "price": 1.78, "quantity": 2},
     {"name": "HEFTHUELLE A4 D'BLA", "price": 0.35},
-    {"name": "HEFTHUELLE A4 PINK", "price": 0.35},
     {"name": "ECKSPANNER MIT 3 KL", "price": 1.99},
     {"name": "SICHTH.A4+DURALUX R", "price": 1.99},
-    {"name": "SICHTH. A4+DURALUX 0", "price": 1.99},
-    {"name": "LEITZ PLASTIK-HEFTE", "price": 0.89}
+    {"name": "SICHTH. A4+DURALUX 0", "price": 1.99}
   ],
   "total": 46.73
 }

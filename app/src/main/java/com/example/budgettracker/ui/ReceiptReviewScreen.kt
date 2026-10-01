@@ -3,7 +3,7 @@ package com.example.budgettracker.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -33,7 +33,9 @@ private data class ItemRow(
     var name: String,
     var priceText: String,
     var commonName: String? = null,
-    var category: String? = null
+    var category: String? = null,
+    val quantity: Double = 1.0,
+    val discount: Double? = null
 ) {
     val price: Double? get() = parsePrice(priceText) ?: priceText.replace(',', '.').toDoubleOrNull()
 }
@@ -54,7 +56,10 @@ fun ReceiptReviewScreen(
     var rows by remember {
         mutableStateOf(
             parsed.items.mapIndexed { i, item ->
-                ItemRow(i, item.name, "%.2f".format(item.price).replace('.', ','))
+                ItemRow(
+                    i, item.name, "%.2f".format(item.price).replace('.', ','),
+                    quantity = item.quantity, discount = item.discount
+                )
             }.toMutableList()
         )
     }
@@ -167,7 +172,7 @@ fun ReceiptReviewScreen(
                                         confirmError = "Invalid price for \"${row.name}\""
                                         return@Button
                                     }
-                                    ReviewedItem(row.name, p, row.commonName, row.category)
+                                    ReviewedItem(row.name, p, row.commonName, row.category, row.quantity, row.discount)
                                 }
                                 if (items.isEmpty()) {
                                     confirmError = "Add at least one item"
@@ -229,28 +234,24 @@ fun ReceiptReviewScreen(
 
             // Column header
             item {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Item", color = Color(0xFF888888), fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Text("Price", color = Color(0xFF888888), fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.width(80.dp))
-                    Spacer(Modifier.width(36.dp))
-                }
+                ReceiptItemHeader()
                 HorizontalDivider(color = Color(0xFF2A2A3A))
             }
 
             // Item rows
-            itemsIndexed(rows, key = { _, row -> row.id }) { index, row ->
-                ReviewItemRow(
-                    row = row,
-                    onEdit = { editingRowId = row.id },
-                    onDelete = {
-                        rows = rows.toMutableList().also { it.removeAt(index) }
-                    }
-                )
+            items(rows, key = { it.id }) { row ->
+                SwipeToDeleteWrapper(onDelete = { rows = rows.filter { it.id != row.id }.toMutableList() }) {
+                    ReceiptItemRow(
+                        name = row.name,
+                        commonName = row.commonName,
+                        category = row.category,
+                        quantity = row.quantity,
+                        discount = row.discount,
+                        price = row.price,
+                        priceText = row.priceText,
+                        onClick = { editingRowId = row.id }
+                    )
+                }
                 HorizontalDivider(color = Color(0xFF1E2229))
             }
             item { Spacer(Modifier.height(80.dp)) }
@@ -287,51 +288,6 @@ fun ReceiptReviewScreen(
                 showAddDialog = false
             }
         )
-    }
-}
-
-@Composable
-private fun ReviewItemRow(
-    row: ItemRow,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val priceValid = row.price != null
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable { onEdit() }
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = row.name,
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium
-            )
-            val commonName = row.commonName
-            if (!commonName.isNullOrBlank()) {
-                Text(
-                    text = listOfNotNull(commonName, row.category).joinToString(" · "),
-                    color = Color(0xFF6A9B6A),
-                    fontSize = 11.sp,
-                    fontStyle = FontStyle.Italic
-                )
-            }
-        }
-        Text(
-            text = if (priceValid) "€%.2f".format(row.price) else row.priceText,
-            color = if (priceValid) Positive else Negative,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.End,
-            modifier = Modifier.width(80.dp)
-        )
-        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Filled.Delete, "Delete", tint = Color(0xFF555555), modifier = Modifier.size(18.dp))
-        }
     }
 }
 

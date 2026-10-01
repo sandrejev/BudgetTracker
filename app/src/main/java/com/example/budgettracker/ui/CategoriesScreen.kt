@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,7 +30,6 @@ fun CategoriesScreen(viewModel: BudgetViewModel, onBack: () -> Unit) {
     val categories by viewModel.categoriesWithCounts.collectAsState(initial = emptyList())
     var adding by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<CategoryWithCount?>(null) }
-    var deleting by remember { mutableStateOf<CategoryWithCount?>(null) }
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -60,28 +58,28 @@ fun CategoriesScreen(viewModel: BudgetViewModel, onBack: () -> Unit) {
         ) {
             item {
                 Text(
-                    "Common item names are grouped into these categories. Tap one to rename it.",
+                    "Common item names are grouped into these categories. Tap one to rename it, swipe left to delete it.",
                     fontSize = 12.sp, color = Color(0xFF555555),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
             items(categories, key = { it.id }) { category ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { renaming = category }
-                        .padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                SwipeToDeleteWrapper(
+                    onDelete = { viewModel.deleteCategory(category.toItemCategory()) },
+                    confirmTitle = "Delete \"${category.name}\"?",
+                    confirmText = "${category.commonNameCount} common name(s) in this category will have no category."
                 ) {
-                    Column(Modifier.weight(1f)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { renaming = category }
+                            .padding(vertical = 10.dp)
+                    ) {
                         Text(category.name, color = Color.White, fontSize = 15.sp)
                         Text(
                             "${category.commonNameCount} common name(s)",
                             color = Color(0xFF666666), fontSize = 11.sp
                         )
-                    }
-                    IconButton(onClick = { deleting = category }) {
-                        Icon(Icons.Filled.Delete, "Delete", tint = Color(0xFF555555), modifier = Modifier.size(18.dp))
                     }
                 }
                 HorizontalDivider(color = Color(0xFF1E2229))
@@ -107,29 +105,6 @@ fun CategoriesScreen(viewModel: BudgetViewModel, onBack: () -> Unit) {
             onDismiss = { renaming = null },
             onConfirm = { name ->
                 viewModel.renameCategory(category.toItemCategory(), name).map { renaming = null }
-            }
-        )
-    }
-
-    deleting?.let { category ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            containerColor = CardDark,
-            title = { Text("Delete \"${category.name}\"?", color = Color.White) },
-            text = {
-                Text(
-                    "${category.commonNameCount} common name(s) in this category will have no category.",
-                    color = Color(0xFFCCCCCC), fontSize = 14.sp
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteCategory(category.toItemCategory())
-                    deleting = null
-                }) { Text("Delete", color = Negative) }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleting = null }) { Text("Cancel", color = Color(0xFF888888)) }
             }
         )
     }

@@ -3,7 +3,7 @@
   "items": [
     {"name": "BANANEN", "price": 0.79},
     {"name": "MILCH 1,5%", "price": 0.89},
-    {"name": "VOLLKORNBROT", "price": 1.49}
+    {"name": "VOLLKORNBROT", "price": 1.19, "discount": 0.3}
   ],
   "total": 2.87
 }

@@ -1,6 +1,7 @@
 package com.example.budgettracker.receipt
 
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
@@ -8,16 +9,19 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 /**
  * Instrumented receipt-pipeline tests — run on a device or emulator.
  *
- * Place receipt images in:
+ * Place receipt images or PDFs in:
  *   app/src/androidTest/assets/receipts/
- *   (jpg, jpeg, or png)
+ *   (jpg, jpeg, png or pdf)
  *
  * For each image, create a matching expected file in the same folder:
  *   <name>.expected.json   →  { "processorId": "rewe", "items": [...], "total": 12.34 }
+ *   Items: { "name", "price" (total paid, after discount), "quantity"? (default 1), "discount"? (total) }
+ *   Identical lines (same name, unit price and discount per unit) are grouped into one item.
  *
  * If no expected file exists yet, the test fails and prints the Level 0 JSON
  * produced by OCR — paste that into the app, verify, then create the expected file.
@@ -37,7 +41,8 @@ class ReceiptPipelineTest {
             .filter { name ->
                 name.endsWith(".jpg", ignoreCase = true) ||
                 name.endsWith(".jpeg", ignoreCase = true) ||
-                name.endsWith(".png", ignoreCase = true)
+                name.endsWith(".png", ignoreCase = true) ||
+                name.endsWith(".pdf", ignoreCase = true)
             }
             .sorted()
 
@@ -55,12 +60,19 @@ class ReceiptPipelineTest {
     )
 
     private fun runPipeline(imageName: String): PipelineResult {
-        val bitmap = assets.open("receipts/$imageName").use { stream ->
-            BitmapFactory.decodeStream(stream)
-                ?: error("Could not decode receipts/$imageName — is it a valid image?")
+        val doc = if (imageName.endsWith(".pdf", ignoreCase = true)) {
+            // PdfTextExtractor reads a Uri, so copy the asset to a file first
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val file = File(context.cacheDir, imageName)
+            assets.open("receipts/$imageName").use { input -> file.outputStream().use { input.copyTo(it) } }
+            PdfTextExtractor.toLevel0(context, Uri.fromFile(file))
+        } else {
+            val bitmap = assets.open("receipts/$imageName").use { stream ->
+                BitmapFactory.decodeStream(stream)
+                    ?: error("Could not decode receipts/$imageName — is it a valid image?")
+            }
+            runBlocking { Level0Builder.fromBitmap(bitmap) }
         }
-
-        val doc = runBlocking { Level0Builder.fromBitmap(bitmap) }
 
         val expectedName = imageName.substringBeforeLast('.') + ".expected.json"
         val expectedText = try {
@@ -101,6 +113,13 @@ class ReceiptPipelineTest {
             val act = result.items[i]
             assertEquals("[$imageName] items[$i].name", exp.getString("name"), act.name)
             assertEquals("[$imageName] items[$i].price", exp.getDouble("price"), act.price, 0.005)
+            assertEquals("[$imageName] items[$i].quantity", exp.optDouble("quantity", 1.0), act.quantity, 0.0005)
+            if (exp.has("discount")) {
+                assertNotNull("[$imageName] items[$i].discount missing", act.discount)
+                assertEquals("[$imageName] items[$i].discount", exp.getDouble("discount"), act.discount!!, 0.005)
+            } else {
+                assertNull("[$imageName] items[$i] has unexpected discount", act.discount)
+            }
         }
     }
 
@@ -131,7 +150,7 @@ class ReceiptPipelineTest {
 
             if (pipelineResult.result == null) {
                 // No expected.json — dump L0 JSON so user can create the expected file
-                val l0Json = pipelineResult.doc.toJsonString(indent = 2)
+                val l0Json = pipelineResult.doc.toJsonString()
                 failures += buildString {
                     appendLine("[$imageName] No expected.json found.")
                     appendLine("Create: app/src/androidTest/assets/receipts/${imageName.substringBeforeLast('.')}.expected.json")
@@ -149,11 +168,13 @@ class ReceiptPipelineTest {
                 failures += buildString {
                     appendLine(e.message)
                     appendLine("Actual items:")
-                    pipelineResult.result.items.forEach { appendLine("  ${it.name} → ${it.price}") }
+                    pipelineResult.result.items.forEach {
+                        appendLine("  ${it.name} → ${it.price} qty=${it.quantity} discount=${it.discount}")
+                    }
                     appendLine("Actual total: ${pipelineResult.result.detectedTotal}")
                     appendLine()
                     appendLine("Level 0 JSON from OCR:")
-                    append(pipelineResult.doc.toJsonString(indent = 2))
+                    append(pipelineResult.doc.toJsonString())
                 }
             }
         }

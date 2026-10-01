@@ -1,0 +1,16 @@
+{
+  "processorId": "lidl",
+  "items": [
+    {"name": "Kohlrabi", "price": 0.0, "discount": 0.59},
+    {"name": "Kiwi Gold", "price": 0.69},
+    {"name": "Butterkäse", "price": 3.49},
+    {"name": "Kaffeepads Gold", "price": 4.31, "discount": 0.48},
+    {"name": "Cola 0% Zucker", "price": 0.98, "quantity": 2, "discount": 0.32},
+    {"name": "Pfand 0,25 EM", "price": 0.5, "quantity": 2},
+    {"name": "Vollk. Sandwi. Toast", "price": 1.07, "discount": 0.12},
+    {"name": "Farmer Cookies Lemon", "price": 1.79},
+    {"name": "Brot Bauernbag", "price": 0.79},
+    {"name": "Biokompost Papierb.", "price": 1.49}
+  ],
+  "total": 15.11
+}

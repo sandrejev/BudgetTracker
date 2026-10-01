@@ -1,0 +1,11 @@
+{
+  "processorId": "penny",
+  "items": [
+    {"name": "Vollkorntoast", "price": 0.89},
+    {"name": "ToA Reispapier", "price": 0.99},
+    {"name": "Tuborg Pilsener", "price": 0.59},
+    {"name": "PFAND 0,25 EURO", "price": 0.5, "quantity": 2},
+    {"name": "COLA ZERO DOSE", "price": 0.39}
+  ],
+  "total": 3.36
+}

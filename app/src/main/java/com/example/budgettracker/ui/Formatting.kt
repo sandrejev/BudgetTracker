@@ -16,3 +16,8 @@ fun formatEntryTimestamp(ts: Long): String {
         .toLocalDateTime()
     return ldt.format(DateTimeFormatter.ofPattern("HH:mm"))
 }
+
+/** "2" for whole numbers, otherwise e.g. "0,436". */
+fun formatQuantity(quantity: Double): String =
+    if (quantity == Math.floor(quantity)) quantity.toLong().toString()
+    else "%.3f".format(quantity).trimEnd('0').replace('.', ',')

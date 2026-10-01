@@ -71,51 +71,6 @@ private fun buildFlatRows(groups: List<DayGroup>, expanded: Set<LocalDate>): Lis
         }
     }
 
-// ── Swipe-to-delete wrapper ───────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SwipeToDeleteWrapper(
-    onDelete: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    val state = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.35f })
-    // Stable callback so SwipeToDismissBox doesn't re-fire onDismiss on recomposition
-    val currentOnDelete by rememberUpdatedState(onDelete)
-    val onDismiss = remember<(SwipeToDismissBoxValue) -> Unit> {
-        { value -> if (value == SwipeToDismissBoxValue.EndToStart) currentOnDelete() }
-    }
-    SwipeToDismissBox(
-        state = state,
-        enableDismissFromStartToEnd = false,
-        onDismiss = onDismiss,
-        backgroundContent = {
-            // progress is 0→1 as user swipes left; use it for continuous colour+icon fade
-            val progress = state.progress
-            val bgAlpha = (progress * 1.3f).coerceIn(0f, 0.9f)
-            val iconAlpha = ((progress - 0.12f) * 4f).coerceIn(0f, 1f)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Negative.copy(alpha = bgAlpha))
-                    .padding(end = 20.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                if (iconAlpha > 0f) {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = "Delete",
-                        tint = Color.White.copy(alpha = iconAlpha),
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-            }
-        }
-    ) {
-        Box(Modifier.background(BackgroundDark)) { content() }
-    }
-}
-
 // ── Screen ───────────────────────────────────────────────────────────────────
 
 @Composable

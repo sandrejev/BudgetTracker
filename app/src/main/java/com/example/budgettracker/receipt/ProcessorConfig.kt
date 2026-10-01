@@ -43,6 +43,16 @@ data class ProcessorConfig(
     val priceXMax: Float = 0.96f,
     /** Item lines containing these strings (case-insensitive) are skipped. */
     val excludeKeywords: List<String> = emptyList(),
+    /**
+     * A line with a price containing one of these (case-insensitive) is a discount on the
+     * item above it, e.g. Lidl's "Lidl Plus Rabatt -0,59": the item's price is reduced.
+     */
+    val discountKeywords: List<String> = DEFAULT_DISCOUNT_KEYWORDS,
+    /**
+     * A line with a price containing one of these is a discount on the whole receipt, e.g.
+     * Müller's "Müller Blüten 2,00" after the subtotal; it becomes a line with a negative price.
+     */
+    val receiptDiscountKeywords: List<String> = emptyList(),
     /** Line containing any of these keywords is the total line. */
     val totalKeywords: List<String> = listOf("gesamt", "total", "summe", "zu zahlen", "zu bezahlen"),
     /** Total price token must have x ≥ this value. */
@@ -85,6 +95,8 @@ data class ProcessorConfig(
         put("priceXMin", priceXMin.toDouble())
         put("priceXMax", priceXMax.toDouble())
         if (excludeKeywords.isNotEmpty()) put("excludeKeywords", JSONArray(excludeKeywords))
+        put("discountKeywords", JSONArray(discountKeywords))
+        if (receiptDiscountKeywords.isNotEmpty()) put("receiptDiscountKeywords", JSONArray(receiptDiscountKeywords))
         put("totalKeywords", JSONArray(totalKeywords))
         put("totalPriceXMin", totalPriceXMin.toDouble())
         if (tableHeaderKeywords.isNotEmpty()) put("tableHeaderKeywords", JSONArray(tableHeaderKeywords))
@@ -95,6 +107,8 @@ data class ProcessorConfig(
     fun toJsonString(): String = toJson().toString(2)
 
     companion object {
+        val DEFAULT_DISCOUNT_KEYWORDS = listOf("rabatt", "preisvorteil")
+
         fun fromJson(json: JSONObject, builtIn: Boolean = false): ProcessorConfig {
             fun strList(key: String): List<String> {
                 val a = json.optJSONArray(key) ?: return emptyList()
@@ -110,6 +124,10 @@ data class ProcessorConfig(
                 priceXMin = json.optDouble("priceXMin", 0.65).toFloat(),
                 priceXMax = json.optDouble("priceXMax", 0.96).toFloat(),
                 excludeKeywords = strList("excludeKeywords"),
+                // Configs saved before discounts existed get the defaults
+                discountKeywords = if (json.has("discountKeywords")) strList("discountKeywords")
+                    else DEFAULT_DISCOUNT_KEYWORDS,
+                receiptDiscountKeywords = strList("receiptDiscountKeywords"),
                 totalKeywords = strList("totalKeywords").ifEmpty {
                     listOf("gesamt", "total", "summe", "zu zahlen", "zu bezahlen")
                 },
@@ -131,9 +149,9 @@ data class ProcessorConfig(
             name = "Lidl",
             // OCR often reads the stylised Lidl logo as LGDL or similar
             shopNamePatterns = listOf("(?i)l[gi]dl", "(?i)lidl"),
-            // Items live in the header section; total keyword is in the body
-            targetSections = listOf("header"),
-            totalTargetSections = listOf("body"),
+            // Items and the total are read from header and body: where Level0Builder puts
+            // the header/body boundary depends on the receipt (e.g. the first discount line)
+            targetSections = listOf("header", "body"),
             // Item names end around x≈0.37; 0.50 gives a safe margin
             nameXMax = 0.50f,
             // Prices right-aligned at x≈0.855; VAT letter (A/B) at x≈0.931 excluded by priceXMax
@@ -141,6 +159,8 @@ data class ProcessorConfig(
             priceXMax = 0.92f,
             // Pfand (deposit) IS included in the receipt total — do not exclude it
             excludeKeywords = listOf("gutschein", "coupon", "rabatt", "preisvorteil", "bonus"),
+            // "Lidl Plus Rabatt -0,59", "Rabatt Getränke -0,32" below an item
+            discountKeywords = listOf("rabatt", "preisvorteil", "lidl plus"),
             totalKeywords = listOf("zu zahlen", "betrag", "gesamt", "total"),
             totalPriceXMin = 0.75f,
             isBuiltIn = true
@@ -164,8 +184,10 @@ data class ProcessorConfig(
                 // add the suffix so the subtotal line is excluded either way.
                 "chensumme",
                 "pfand", "gutschein", "rabatt",
-                "blüten", "kartenzahlung", "nachlass"
+                "kartenzahlung", "nachlass"
             ),
+            // "Müller Blüten 2,00" after the subtotal: loyalty discount on the whole receipt
+            receiptDiscountKeywords = listOf("blüten"),
             // "summe" removed: it substring-matches "ZWISCHENSUMME" and picks up the subtotal
             // instead of the final "ZU BEZAHLEN" amount.
             totalKeywords = listOf("zu bezahlen", "gesamt", "total"),
@@ -184,10 +206,15 @@ data class ProcessorConfig(
             id = "rewe",
             name = "Rewe",
             shopNamePatterns = listOf("(?i)rewe"),
+            // Item lines end with a VAT letter ("3,98 B"), so Level0Builder may put them in
+            // the header; read items and total from both sections
+            targetSections = listOf("header", "body"),
             nameXMax = 0.70f,
             priceXMin = 0.68f,
             priceXMax = 0.97f,
-            excludeKeywords = listOf("pfand", "rabatt", "coupon", "treuepunkte", "payback", "eur", "stk"),
+            // Pfand (deposit) is part of the total, so it's an item.
+            // "2 Stk x 1,99" lines below an item become its quantity.
+            excludeKeywords = listOf("coupon", "treuepunkte", "payback"),
             totalKeywords = listOf("summe", "gesamt", "zu zahlen", "total"),
             totalPriceXMin = 0.55f,
             isBuiltIn = true
@@ -197,11 +224,14 @@ data class ProcessorConfig(
             id = "penny",
             name = "Penny",
             shopNamePatterns = listOf("(?i)penny"),
+            // Same receipt layout as Rewe: read items and total from header and body
+            targetSections = listOf("header", "body"),
             nameXMax = 0.72f,
             priceXMin = 0.70f,
             priceXMax = 0.97f,
-            excludeKeywords = listOf("pfand", "rabatt", "coupon", "punkte"),
-            totalKeywords = listOf("summe", "gesamt", "zu zahlen", "total", "bon"),
+            // Pfand (deposit) is part of the total, so it's an item
+            excludeKeywords = listOf("coupon", "punkte"),
+            totalKeywords = listOf("summe", "gesamt", "zu zahlen", "total"),
             totalPriceXMin = 0.55f,
             isBuiltIn = true
         )

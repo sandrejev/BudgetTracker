@@ -2,7 +2,8 @@
   "processorId": "muller",
   "items": [
     {"name": "KS TREND STEINCHEN", "price": 2.79},
-    {"name": "SCHULBLOCK A4 50BL", "price": 1.19}
+    {"name": "SCHULBLOCK A4 50BL", "price": 1.19},
+    {"name": "Müller Blüten", "price": -2.0}
   ],
   "total": 1.98
 }
