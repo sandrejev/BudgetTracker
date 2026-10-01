@@ -20,7 +20,10 @@ private val DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
  *   "version": 1,
  *   "exported": "2025-01-01 12:00",
  *   "expenses": [ { id, amount, note, timestamp, shopName, receipt? } ],
- *   "shops": [ { id, name, logoUri, locations: [...] } ]
+ *   "shops": [ { id, name, logoUri, locations: [...] } ],
+ *   "itemCategories": [ { name, sortOrder } ],
+ *   "commonNames": [ { name, category, usageCount } ],
+ *   "itemAliases": [ { rawName, commonName } ]
  * }
  *
  * Each expense with a receipt embeds the receipt inline:
@@ -83,12 +86,41 @@ object ExportImport {
             })
         }
 
+        // Common item names: categories, names and which receipt texts convert to them
+        val nameDao = db.itemNameDao()
+        val categories = nameDao.categoriesOnce()
+        val categoryById = categories.associate { it.id to it.name }
+        val commonNames = nameDao.commonNamesAllOnce()
+        val commonNameById = commonNames.associate { it.id to it.name }
+        val categoryArr = JSONArray()
+        categories.forEach { c ->
+            categoryArr.put(JSONObject().put("name", c.name).put("sortOrder", c.sortOrder))
+        }
+        val commonNameArr = JSONArray()
+        commonNames.forEach { cn ->
+            commonNameArr.put(JSONObject().apply {
+                put("name", cn.name)
+                put("category", cn.categoryId?.let { categoryById[it] } ?: JSONObject.NULL)
+                put("usageCount", cn.usageCount)
+            })
+        }
+        val aliasArr = JSONArray()
+        nameDao.aliasesOnce().forEach { a ->
+            aliasArr.put(JSONObject().apply {
+                put("rawName", a.rawName)
+                put("commonName", a.commonNameId?.let { commonNameById[it] } ?: JSONObject.NULL)
+            })
+        }
+
         val now = DATE_FMT.format(Instant.now().atZone(ZoneId.systemDefault()))
         JSONObject().apply {
             put("version", 1)
             put("exported", now)
             put("expenses", expArr)
             put("shops", shopArr)
+            put("itemCategories", categoryArr)
+            put("commonNames", commonNameArr)
+            put("itemAliases", aliasArr)
         }.toString(2)
     }
 
@@ -126,6 +158,33 @@ object ExportImport {
             }
         }
 
+        // Common item names (merged with existing ones by name)
+        val nameDao = db.itemNameDao()
+        val names = ItemNameRepository(nameDao)
+        val categoryArr = root.optJSONArray("itemCategories") ?: JSONArray()
+        for (i in 0 until categoryArr.length()) {
+            val cObj = categoryArr.getJSONObject(i)
+            val name = cObj.getString("name").trim()
+            if (name.isNotEmpty() && nameDao.findCategory(name) == null) {
+                nameDao.insertCategory(ItemCategory(name = name, sortOrder = cObj.optInt("sortOrder", nameDao.maxCategorySortOrder() + 1)))
+            }
+        }
+        val commonNameArr = root.optJSONArray("commonNames") ?: JSONArray()
+        for (i in 0 until commonNameArr.length()) {
+            val cnObj = commonNameArr.getJSONObject(i)
+            val name = cnObj.getString("name").trim()
+            if (name.isEmpty()) continue
+            val category = cnObj.optString("category").takeIf { it != "null" && it.isNotEmpty() }
+            names.commonNameFor(name, category)
+        }
+        val aliasArr = root.optJSONArray("itemAliases") ?: JSONArray()
+        for (i in 0 until aliasArr.length()) {
+            val aObj = aliasArr.getJSONObject(i)
+            val commonName = aObj.optString("commonName").takeIf { it != "null" && it.isNotEmpty() }
+            if (commonName != null) names.assign(aObj.getString("rawName"), commonName)
+            else names.aliasIdFor(aObj.getString("rawName"))
+        }
+
         // Import expenses + receipts
         for (i in 0 until expArr.length()) {
             val eObj = expArr.getJSONObject(i)
@@ -148,9 +207,11 @@ object ExportImport {
                 val itemArr = rObj.optJSONArray("items") ?: JSONArray()
                 val items = (0 until itemArr.length()).map { j ->
                     val iObj = itemArr.getJSONObject(j)
+                    val name = iObj.getString("name")
                     ReceiptItem(
                         receiptId = newRecId,
-                        name = iObj.getString("name"),
+                        name = name,
+                        aliasId = names.aliasIdFor(name),
                         totalPrice = iObj.getDouble("totalPrice"),
                         qty = iObj.optString("qty").takeIf { it != "null" && it.isNotEmpty() },
                         sortOrder = j

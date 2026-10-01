@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.budgettracker.receipt.Level0Doc
+import com.example.budgettracker.receipt.NameSuggestion
 import com.example.budgettracker.receipt.ParsedReceipt
 import com.example.budgettracker.receipt.parsePrice
 import com.example.budgettracker.ui.theme.*
@@ -31,7 +32,8 @@ private data class ItemRow(
     val id: Int,
     var name: String,
     var priceText: String,
-    var commonName: String? = null
+    var commonName: String? = null,
+    var category: String? = null
 ) {
     val price: Double? get() = parsePrice(priceText) ?: priceText.replace(',', '.').toDoubleOrNull()
 }
@@ -63,6 +65,20 @@ fun ReceiptReviewScreen(
     var namesError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    fun applyNames(names: Map<Int, NameSuggestion>) {
+        rows = rows.toMutableList().also { list ->
+            names.forEach { (idx, suggestion) ->
+                val i = idx - 1
+                if (i in list.indices) list[i] = list[i].copy(commonName = suggestion.name, category = suggestion.category)
+            }
+        }
+    }
+
+    // Items bought before already have a common name: show it right away
+    LaunchedEffect(Unit) {
+        applyNames(viewModel.knownNamesForReview(rows.map { it.name }))
+    }
+
     val itemsTotal = rows.sumOf { it.price ?: 0.0 }
     val detectedTotal = parsed.detectedTotal
 
@@ -89,12 +105,7 @@ fun ReceiptReviewScreen(
                                         namesError = "Couldn't resolve names: ${e.message?.take(200)}"
                                         emptyMap()
                                     }
-                                    rows = rows.toMutableList().also { list ->
-                                        resolved.forEach { (idx, commonName) ->
-                                            val i = idx - 1
-                                            if (i in list.indices) list[i] = list[i].copy(commonName = commonName)
-                                        }
-                                    }
+                                    applyNames(resolved)
                                     resolvingNames = false
                                 }
                             }
@@ -156,7 +167,7 @@ fun ReceiptReviewScreen(
                                         confirmError = "Invalid price for \"${row.name}\""
                                         return@Button
                                     }
-                                    Triple(row.name, p, row.commonName)
+                                    ReviewedItem(row.name, p, row.commonName, row.category)
                                 }
                                 if (items.isEmpty()) {
                                     confirmError = "Add at least one item"
@@ -256,7 +267,7 @@ fun ReceiptReviewScreen(
             onConfirm = { name, price ->
                 rows = rows.toMutableList().also { list ->
                     val idx = list.indexOfFirst { it.id == rowId }
-                    if (idx >= 0) list[idx] = list[idx].copy(name = name, priceText = price, commonName = null)
+                    if (idx >= 0) list[idx] = list[idx].copy(name = name, priceText = price, commonName = null, category = null)
                 }
                 editingRowId = null
             }
@@ -303,7 +314,7 @@ private fun ReviewItemRow(
             val commonName = row.commonName
             if (!commonName.isNullOrBlank()) {
                 Text(
-                    text = commonName,
+                    text = listOfNotNull(commonName, row.category).joinToString(" · "),
                     color = Color(0xFF6A9B6A),
                     fontSize = 11.sp,
                     fontStyle = FontStyle.Italic

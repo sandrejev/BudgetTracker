@@ -117,7 +117,7 @@ object ReceiptProcessor {
                     // Table mode: price is the parseable token closest to priceColX
                     val priceToken = tokens
                         .filter { parsePrice(it.text) != null }
-                        .minByOrNull { abs(it.x - priceColX!!) }
+                        .minByOrNull { abs(it.x - priceColX) }
                         ?: continue
 
                     val price = parsePrice(priceToken.text) ?: continue
@@ -126,8 +126,8 @@ object ReceiptProcessor {
                     val nameTokens = tokens
                         .filter { tok ->
                             tok !== priceToken &&
-                            tok.x >= (nameColX!! - 0.05f) &&
-                            tok.x < priceColX!!
+                            tok.x >= (nameColX - 0.05f) &&
+                            tok.x < priceColX
                         }
                         .map { it.text }
                     val name = nameTokens.joinToString(" ").trim()

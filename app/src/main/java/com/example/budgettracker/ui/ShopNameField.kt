@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.budgettracker.data.ShopNameMatcher
@@ -32,7 +33,9 @@ fun ShopNameField(
     label: @Composable (() -> Unit)? = null,
     placeholder: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null,
-    colors: TextFieldColors = OutlinedTextFieldDefaults.colors()
+    colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
+    suggestionIcon: ImageVector = Icons.Filled.Store,
+    newEntryLabel: (String) -> String = { "Add \"$it\" as new shop" }
 ) {
     var expanded by remember { mutableStateOf(false) }
     val suggestions = remember(value, shopNames) { ShopNameMatcher.suggestions(value, shopNames) }
@@ -69,7 +72,7 @@ fun ShopNameField(
                 DropdownMenuItem(
                     text = { Text(name, color = Color.White) },
                     leadingIcon = {
-                        Icon(Icons.Filled.Store, null, tint = Color(0xFF888888), modifier = Modifier.size(18.dp))
+                        Icon(suggestionIcon, null, tint = Color(0xFF888888), modifier = Modifier.size(18.dp))
                     },
                     onClick = {
                         onValueChange(name)
@@ -81,7 +84,7 @@ fun ShopNameField(
             if (isNewName) {
                 if (suggestions.isNotEmpty()) HorizontalDivider(color = Color(0xFF2A3040))
                 DropdownMenuItem(
-                    text = { Text("Add \"$trimmed\" as new shop", color = Positive, fontWeight = FontWeight.Medium) },
+                    text = { Text(newEntryLabel(trimmed), color = Positive, fontWeight = FontWeight.Medium) },
                     leadingIcon = {
                         Icon(Icons.Filled.Add, null, tint = Positive, modifier = Modifier.size(18.dp))
                     },
