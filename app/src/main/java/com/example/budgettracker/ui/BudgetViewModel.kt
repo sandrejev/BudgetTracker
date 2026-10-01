@@ -16,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -205,8 +206,8 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun getLastLocation(): Pair<Double, Double>? =
         suspendCancellableCoroutine { cont ->
             fusedLocation.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
-                .addOnSuccessListener { loc -> cont.resume(loc?.let { it.latitude to it.longitude }) {} }
-                .addOnFailureListener { cont.resume(null) {} }
+                .addOnSuccessListener { loc -> cont.resume(loc?.let { it.latitude to it.longitude }) }
+                .addOnFailureListener { cont.resume(null) }
         }
 
     // ── Receipts ──────────────────────────────────────────────────────────────

@@ -79,18 +79,16 @@ fun SwipeToDeleteWrapper(
     onDelete: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    val state = rememberSwipeToDismissBoxState(
-        confirmValueChange = { newValue ->
-            if (newValue == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else false
-        },
-        positionalThreshold = { it * 0.35f }
-    )
+    val state = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.35f })
+    // Stable callback so SwipeToDismissBox doesn't re-fire onDismiss on recomposition
+    val currentOnDelete by rememberUpdatedState(onDelete)
+    val onDismiss = remember<(SwipeToDismissBoxValue) -> Unit> {
+        { value -> if (value == SwipeToDismissBoxValue.EndToStart) currentOnDelete() }
+    }
     SwipeToDismissBox(
         state = state,
         enableDismissFromStartToEnd = false,
+        onDismiss = onDismiss,
         backgroundContent = {
             // progress is 0→1 as user swipes left; use it for continuous colour+icon fade
             val progress = state.progress

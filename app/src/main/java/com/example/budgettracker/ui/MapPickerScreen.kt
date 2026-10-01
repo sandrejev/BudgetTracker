@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import com.example.budgettracker.ui.icons.*
 import androidx.compose.material3.*
@@ -35,6 +36,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
@@ -86,8 +88,8 @@ fun MapPickerScreen(
             @SuppressLint("MissingPermission")
             suspendCancellableCoroutine<Pair<Double, Double>?> { cont ->
                 fused.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
-                    .addOnSuccessListener { l -> cont.resume(l?.let { it.latitude to it.longitude }) {} }
-                    .addOnFailureListener { cont.resume(null) {} }
+                    .addOnSuccessListener { l -> cont.resume(l?.let { it.latitude to it.longitude }) }
+                    .addOnFailureListener { cont.resume(null) }
             }
         }.getOrNull()
         loc?.let { (lat, lng) ->
@@ -105,7 +107,7 @@ fun MapPickerScreen(
                 title = { Text("Pick location", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
