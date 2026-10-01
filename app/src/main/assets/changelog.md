@@ -6,6 +6,10 @@
 - Shop names are saved with their existing spelling ("lidl" → "LIDL") and new shops are added automatically
 - Faster builds: Gradle build cache, smaller icon library
 - Expenses from past months can be edited in History
+- Fixed "Access blocked" map tiles: the map now identifies itself to OpenStreetMap and caches tiles
+- Map opens at your current location when adding a new shop location
+- Map style setting with previews: OpenStreetMap plus MapTiler Streets, Basic, Bright, Outdoor, Satellite and dark styles
+- Resolving common names now shows the actual error (missing API key, LLM request failed, …) instead of always reporting success
 
 ## v1.3.0 — 2026-09-30 — Common Names & LLM Integration
 

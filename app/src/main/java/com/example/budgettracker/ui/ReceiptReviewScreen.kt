@@ -60,6 +60,7 @@ fun ReceiptReviewScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var confirmError by remember { mutableStateOf<String?>(null) }
     var resolvingNames by remember { mutableStateOf(false) }
+    var namesError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     val itemsTotal = rows.sumOf { it.price ?: 0.0 }
@@ -81,8 +82,13 @@ fun ReceiptReviewScreen(
                         onClick = {
                             if (!resolvingNames && rows.isNotEmpty()) {
                                 resolvingNames = true
+                                namesError = null
                                 scope.launch {
-                                    val resolved = viewModel.resolveNamesForReview(rows.map { it.name })
+                                    val result = viewModel.resolveNamesForReview(rows.map { it.name })
+                                    val resolved = result.getOrElse { e ->
+                                        namesError = "Couldn't resolve names: ${e.message?.take(200)}"
+                                        emptyMap()
+                                    }
                                     rows = rows.toMutableList().also { list ->
                                         resolved.forEach { (idx, commonName) ->
                                             val i = idx - 1
@@ -118,7 +124,7 @@ fun ReceiptReviewScreen(
         bottomBar = {
             Surface(color = CardDark) {
                 Column(Modifier.padding(16.dp)) {
-                    confirmError?.let {
+                    (namesError ?: confirmError)?.let {
                         Text(it, color = Negative, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                     }
                     Row(

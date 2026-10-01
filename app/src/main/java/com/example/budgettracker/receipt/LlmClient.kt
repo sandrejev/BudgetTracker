@@ -35,7 +35,10 @@ object LlmClient {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
             doOutput = true
-            connectTimeout = 30_000
+            // Short connect timeout: if one of the server's addresses doesn't answer
+            // (e.g. broken IPv6 on the network), Android moves on to the next one quickly
+            // instead of waiting 30 s per address. Generating an answer can take longer.
+            connectTimeout = 5_000
             readTimeout = 60_000
         }
 

@@ -19,6 +19,7 @@ class SettingsRepository(private val context: Context) {
         private val MONTHLY_LIMIT_KEY = doublePreferencesKey("monthly_limit")
         private val LLM_API_KEY = stringPreferencesKey("llm_api_key")
         private val LLM_API_URL = stringPreferencesKey("llm_api_url")
+        private val MAP_STYLE = stringPreferencesKey("map_style")
         private const val DEFAULT_LIMIT = 600.0
     }
 
@@ -42,5 +43,12 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLlmApiUrl(url: String) {
         context.dataStore.edit { it[LLM_API_URL] = url }
+    }
+
+    /** Name of the selected MapStyle, or null if none was chosen yet. */
+    val mapStyleFlow: Flow<String?> = context.dataStore.data.map { it[MAP_STYLE] }
+
+    suspend fun setMapStyle(name: String) {
+        context.dataStore.edit { it[MAP_STYLE] = name }
     }
 }

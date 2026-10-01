@@ -3,6 +3,7 @@ package com.example.budgettracker.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.location.Location
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -29,14 +30,23 @@ import com.example.budgettracker.data.ShopLocation
 import com.example.budgettracker.ui.theme.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import com.google.android.gms.tasks.Task
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+
+/** Waits for a location task; (lat, lng), or null if it fails or has no location. */
+private suspend fun awaitLatLng(task: () -> Task<Location>): Pair<Double, Double>? =
+    runCatching {
+        suspendCancellableCoroutine<Pair<Double, Double>?> { cont ->
+            task()
+                .addOnSuccessListener { l -> cont.resume(l?.let { it.latitude to it.longitude }) }
+                .addOnFailureListener { cont.resume(null) }
+        }
+    }.getOrNull()
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
@@ -52,24 +62,26 @@ import kotlin.coroutines.resume
 @Composable
 fun MapPickerScreen(
     existingLocation: ShopLocation?,
+    mapStyle: MapStyle,
     onBack: () -> Unit,
     onConfirm: (lat: Double, lng: Double, label: String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Initialise osmdroid user-agent (required before map is created)
-    LaunchedEffect(Unit) {
-        Configuration.getInstance().userAgentValue = context.packageName
-    }
+    // osmdroid must be configured before the MapView below is created
+    remember { configureOsmdroid(context) }
 
-    // Track the map centre — updated via MapListener
+    // Track the map centre — updated via MapListener. Without a saved location the
+    // map starts at a fallback (Brussels) and jumps to the device location below.
     val initialLat = existingLocation?.latitude ?: 50.85
     val initialLng = existingLocation?.longitude ?: 4.35
     var centerLat by remember { mutableStateOf(initialLat) }
     var centerLng by remember { mutableStateOf(initialLng) }
     var label by remember { mutableStateOf(existingLocation?.label ?: "") }
     var locating by remember { mutableStateOf(false) }
+    // First fix after opening: jump straight there instead of animating across the map
+    var jumpToFirstFix by remember { mutableStateOf(existingLocation == null) }
 
     // MapView reference so we can animate to current location
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
@@ -84,20 +96,42 @@ fun MapPickerScreen(
     LaunchedEffect(locating) {
         if (!locating) return@LaunchedEffect
         val fused = LocationServices.getFusedLocationProviderClient(context)
-        val loc = runCatching {
-            @SuppressLint("MissingPermission")
-            suspendCancellableCoroutine<Pair<Double, Double>?> { cont ->
-                fused.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
-                    .addOnSuccessListener { l -> cont.resume(l?.let { it.latitude to it.longitude }) }
-                    .addOnFailureListener { cont.resume(null) }
-            }
-        }.getOrNull()
-        loc?.let { (lat, lng) ->
+        fun moveTo(lat: Double, lng: Double) {
             centerLat = lat
             centerLng = lng
-            mapViewRef?.controller?.animateTo(GeoPoint(lat, lng))
+            val point = GeoPoint(lat, lng)
+            // Animating from the fallback position would pan across (and download) many tiles
+            if (jumpToFirstFix) mapViewRef?.controller?.setCenter(point)
+            else mapViewRef?.controller?.animateTo(point)
         }
+        // On open, the last known position is available almost instantly, so the map
+        // stops loading tiles for the fallback position while waiting for a fresh fix
+        if (jumpToFirstFix) {
+            @SuppressLint("MissingPermission")
+            val last = awaitLatLng { fused.lastLocation }
+            last?.let { (lat, lng) -> moveTo(lat, lng) }
+        }
+        @SuppressLint("MissingPermission")
+        val current = awaitLatLng {
+            fused.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+        }
+        current?.let { (lat, lng) -> moveTo(lat, lng) }
+        jumpToFirstFix = false
         locating = false
+    }
+
+    fun locateMe() {
+        val perm = Manifest.permission.ACCESS_FINE_LOCATION
+        if (ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED) {
+            locating = true
+        } else {
+            locationPermissionLauncher.launch(perm)
+        }
+    }
+
+    // New location: start at where the user is now
+    LaunchedEffect(Unit) {
+        if (existingLocation == null) locateMe()
     }
 
     Scaffold(
@@ -123,9 +157,12 @@ fun MapPickerScreen(
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
-                    MapView(ctx).also { mv ->
+                    MapView(ctx, AppTileProvider(ctx, mapStyle.tileSource)).also { mv ->
                         mapViewRef = mv
-                        mv.setTileSource(TileSourceFactory.MAPNIK)
+                        mv.setTileSource(mapStyle.tileSource)
+                        // Draw tiles at their size in dp: ~5x fewer tiles to download
+                        // on high-density screens, and readable labels
+                        mv.isTilesScaledToDpi = true
                         mv.setMultiTouchControls(true)
                         mv.controller.setZoom(17.0)
                         mv.controller.setCenter(GeoPoint(initialLat, initialLng))
@@ -167,16 +204,21 @@ fun MapPickerScreen(
                 )
             }
 
+            // ── Attribution (required by OpenStreetMap and MapTiler) ──────────
+            Text(
+                mapStyle.attribution,
+                fontSize = 10.sp,
+                color = Color(0xFF333333),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+
             // ── Current location FAB ──────────────────────────────────────────
             FloatingActionButton(
-                onClick = {
-                    val perm = Manifest.permission.ACCESS_FINE_LOCATION
-                    if (ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED) {
-                        locating = true
-                    } else {
-                        locationPermissionLauncher.launch(perm)
-                    }
-                },
+                onClick = { locateMe() },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(16.dp),

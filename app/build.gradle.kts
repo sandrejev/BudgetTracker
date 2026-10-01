@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+// MapTiler API key for the map styles. Put MAPTILER_KEY=... in local.properties
+// (never committed); without it only the OpenStreetMap style is available.
+val mapTilerKey: String = rootProject.file("local.properties")
+    .takeIf { it.exists() }
+    ?.let { file -> Properties().apply { file.inputStream().use { load(it) } } }
+    ?.getProperty("MAPTILER_KEY")
+    ?.trim()
+    ?: ""
 
 android {
     namespace = "com.example.budgettracker"
@@ -15,6 +26,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "MAPTILER_KEY", "\"$mapTilerKey\"")
     }
 
     buildTypes {
@@ -25,6 +37,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
