@@ -144,6 +144,7 @@ fun MainScreen(
     var amountText by remember { mutableStateOf("") }
     var noteText by remember { mutableStateOf("") }
     var shopNameText by remember { mutableStateOf("") }
+    val shopNames = viewModel.shops.collectAsState().value.map { it.name }
     var detectingShop by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
@@ -229,6 +230,7 @@ fun MainScreen(
                     amountText = amountText,
                     noteText = noteText,
                     shopNameText = shopNameText,
+                    shopNames = shopNames,
                     detectingShop = detectingShop,
                     onAmountChange = { amountText = it },
                     onNoteChange = { noteText = it },
@@ -310,6 +312,7 @@ fun MainScreen(
     editingExpense?.let { expense ->
         EditExpenseDialog(
             expense = expense,
+            shopNames = shopNames,
             onDismiss = { editingExpense = null },
             onConfirm = { amount, note, shopName ->
                 viewModel.updateExpense(expense, amount, note, shopName)
@@ -367,6 +370,7 @@ private fun InputSection(
     amountText: String,
     noteText: String,
     shopNameText: String,
+    shopNames: List<String>,
     detectingShop: Boolean,
     onAmountChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
@@ -414,11 +418,11 @@ private fun InputSection(
             colors = fieldColors
         )
         Spacer(Modifier.height(6.dp))
-        OutlinedTextField(
+        ShopNameField(
             value = shopNameText,
             onValueChange = onShopNameChange,
+            shopNames = shopNames,
             placeholder = { Text("Shop (optional)", color = Color(0xFF555555)) },
-            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 if (detectingShop) {
@@ -553,6 +557,7 @@ fun ExpenseRow(
 @Composable
 fun EditExpenseDialog(
     expense: Expense,
+    shopNames: List<String>,
     onDismiss: () -> Unit,
     onConfirm: (Double, String, String?) -> Unit
 ) {
@@ -591,11 +596,11 @@ fun EditExpenseDialog(
                     modifier = Modifier.fillMaxWidth(),
                     colors = fieldColors
                 )
-                OutlinedTextField(
+                ShopNameField(
                     value = shopNameText,
                     onValueChange = { shopNameText = it },
+                    shopNames = shopNames,
                     label = { Text("Shop") },
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = fieldColors
                 )

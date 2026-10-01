@@ -48,6 +48,7 @@ fun ReceiptReviewScreen(
     onConfirmed: () -> Unit
 ) {
     var shopName by remember { mutableStateOf(detectedShop ?: "") }
+    val shopNames = viewModel.shops.collectAsState().value.map { it.name }
     var rows by remember {
         mutableStateOf(
             parsed.items.mapIndexed { i, item ->
@@ -186,11 +187,11 @@ fun ReceiptReviewScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Store, null, tint = Color(0xFF888888), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    OutlinedTextField(
+                    ShopNameField(
                         value = shopName,
                         onValueChange = { shopName = it },
+                        shopNames = shopNames,
                         label = { Text("Shop name") },
-                        singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,

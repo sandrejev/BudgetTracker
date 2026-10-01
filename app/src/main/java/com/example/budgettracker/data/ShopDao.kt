@@ -19,6 +19,9 @@ interface ShopDao {
     @Query("SELECT * FROM shops ORDER BY name ASC")
     fun getAllShops(): Flow<List<Shop>>
 
+    @Query("SELECT * FROM shops ORDER BY name ASC")
+    suspend fun getAllShopsOnce(): List<Shop>
+
     @Query("SELECT * FROM shops WHERE id = :id")
     suspend fun getShopById(id: Long): Shop?
 

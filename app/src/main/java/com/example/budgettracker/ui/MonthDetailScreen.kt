@@ -187,6 +187,7 @@ fun MonthDetailScreen(
     editingExpense?.let { expense ->
         EditExpenseDialog(
             expense = expense,
+            shopNames = viewModel.shops.collectAsState().value.map { it.name },
             onDismiss = { editingExpense = null },
             onConfirm = { amount, note, shopName ->
                 viewModel.updateExpense(expense, amount, note, shopName)

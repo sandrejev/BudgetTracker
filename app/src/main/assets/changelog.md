@@ -1,3 +1,12 @@
+## v1.4.0 — 2026-10-01 — Shop Name Matching
+
+- Shop name from a receipt is fuzzy-matched to your saved shops, so OCR errors like "3Müller" or "LGDL" become "Müller" / "LIDL"
+- The first few receipt header lines are checked, not just the first one
+- Shop fields suggest saved shops in a dropdown while typing, with an option to add a new shop
+- Shop names are saved with their existing spelling ("lidl" → "LIDL") and new shops are added automatically
+- Faster builds: Gradle build cache, smaller icon library
+- Expenses from past months can be edited in History
+
 ## v1.3.0 — 2026-09-30 — Common Names & LLM Integration
 
 - LLM-powered common name normalizer: raw receipt codes (e.g. "MLCH WHOL 3.25% 2L") resolved to readable labels ("whole milk")
