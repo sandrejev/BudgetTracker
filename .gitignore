@@ -1,13 +1,38 @@
+# Build outputs
 *.iml
-.gradle
+.gradle/
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Local config (never commit)
+local.properties
 /local.properties
+
+# IDE
 /.idea/
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+*.swp
 
-# Project exclude paths
-/app/build/
+# Gradle wrapper jar (keep scripts, skip binary)
+gradle/wrapper/gradle-wrapper.jar
+
+# Android keystore files
+*.jks
+*.keystore
+keystore.properties
+
+# Claude working copies (_src is a staging area, not source of truth)
+/_src/
+
+# Generated / compiled
+*.class
+*.apk
+*.aab
+*.ap_
+bin/
+gen/
+out/
+proguard/

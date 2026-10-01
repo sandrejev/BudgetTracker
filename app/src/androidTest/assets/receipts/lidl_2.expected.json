@@ -1,0 +1,13 @@
+{
+  "processorId": "lidl",
+  "items": [
+    {"name": "Speisekartoffeln", "price": 2.19},
+    {"name": "Rucola 125g", "price": 0.71},
+    {"name": "Crème Fraiche 15%", "price": 0.99},
+    {"name": "Miracel Whip Balance", "price": 2.65},
+    {"name": "Sonnenmais", "price": 0.89},
+    {"name": "Safa HähBrInnenfilet", "price": 8.99},
+    {"name": "Organizer Kü-0530604", "price": 3.99}
+  ],
+  "total": 20.41
+}

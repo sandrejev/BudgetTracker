@@ -77,7 +77,7 @@ fun ChangelogScreen(onBack: () -> Unit) {
         try {
             val text = context.assets.open("changelog.md").bufferedReader().use { it.readText() }
             parseChangelog(text)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
