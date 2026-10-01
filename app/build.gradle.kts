@@ -53,7 +53,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
+    // Only the small core icon set; extra icons live in ui/icons
+    implementation("androidx.compose.material:material-icons-core")
 
     // Room for local persistence
     implementation("androidx.room:room-runtime:2.8.5")
