@@ -44,6 +44,7 @@ fun SettingsScreen(
 
     val llmApiKey by viewModel.llmApiKey.collectAsState()
     val llmApiUrl by viewModel.llmApiUrl.collectAsState()
+    val mapStyle by viewModel.mapStyle.collectAsState()
     var apiKeyText by remember(llmApiKey) { mutableStateOf(llmApiKey) }
     var apiUrlText by remember(llmApiUrl) { mutableStateOf(llmApiUrl) }
     var showApiKey by remember { mutableStateOf(false) }
@@ -231,6 +232,20 @@ fun SettingsScreen(
                     lineHeight = 18.sp
                 )
             }
+
+            HorizontalDivider(color = Color(0xFF222830))
+
+            // ── Map style ─────────────────────────────────────────────────────
+            Text("Map style", fontSize = 13.sp, color = Color(0xFF888888), letterSpacing = 0.06.sp)
+            Text(
+                if (MapStyle.hasMapTilerKey) "Map used when picking shop locations."
+                else "Map used when picking shop locations. More styles are available " +
+                        "with a MapTiler key (MAPTILER_KEY in local.properties).",
+                fontSize = 12.sp,
+                color = Color(0xFF555555),
+                lineHeight = 18.sp
+            )
+            MapStylePicker(selected = mapStyle, onSelect = { viewModel.setMapStyle(it) })
 
             HorizontalDivider(color = Color(0xFF222830))
 

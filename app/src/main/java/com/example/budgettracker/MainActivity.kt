@@ -142,6 +142,7 @@ private fun BudgetApp(
 
             is Screen.MapPicker -> MapPickerScreen(
                 existingLocation = current.existingLocation,
+                mapStyle = viewModel.mapStyle.collectAsState().value,
                 onBack = { screen = Screen.ShopManagement },
                 onConfirm = { lat, lng, label ->
                     if (current.existingLocation != null) {

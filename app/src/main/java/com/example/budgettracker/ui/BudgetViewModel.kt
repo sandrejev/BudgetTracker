@@ -82,6 +82,12 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun llmUrl() = llmApiUrl.value.ifBlank { LlmClient.DEFAULT_GEMINI_URL }
 
+    val mapStyle: StateFlow<MapStyle> = settings.mapStyleFlow
+        .map { MapStyle.fromId(it) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, MapStyle.default)
+
+    fun setMapStyle(style: MapStyle) = viewModelScope.launch { settings.setMapStyle(style.name) }
+
     /** Test the LLM connection. Returns "Connected ✓" on success or an error description. */
     suspend fun testLlmConnection(): String {
         val key = llmApiKey.value

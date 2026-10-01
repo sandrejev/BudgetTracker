@@ -2,7 +2,6 @@ package com.example.budgettracker.ui
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,55 +29,12 @@ import com.example.budgettracker.data.ShopLocation
 import com.example.budgettracker.ui.theme.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourcePolicy
-import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
-import java.io.File
-
-// ── osmdroid setup ───────────────────────────────────────────────────────────
-
-// Follows the OpenStreetMap tile usage policy
-// (https://operations.osmfoundation.org/policies/tiles/); otherwise OSM's servers
-// answer with "Access blocked" tiles.
-
-private const val OSM_USER_AGENT =
-    "BudgetTracker/1.0 (Android budget app; +https://github.com/sandrejev/BudgetTracker)"
-
-/**
- * Same as osmdroid's TileSourceFactory.MAPNIK, minus FLAG_USER_AGENT_NORMALIZED.
- * With that flag osmdroid ignores [OSM_USER_AGENT] and sends "<packageName>/<versionCode>",
- * and OSM blocks every "com.example.*" app as unidentifiable.
- */
-private val OsmTiles = XYTileSource(
-    "Mapnik", 0, 19, 256, ".png",
-    arrayOf("https://tile.openstreetmap.org/"),
-    "© OpenStreetMap contributors",
-    TileSourcePolicy(
-        2,
-        TileSourcePolicy.FLAG_NO_BULK or
-            TileSourcePolicy.FLAG_NO_PREVENTIVE or
-            TileSourcePolicy.FLAG_USER_AGENT_MEANINGFUL
-    )
-)
-
-/**
- * Sets a unique User-Agent and a persistent tile cache, so tiles aren't
- * downloaded again on every visit. Must run before a MapView is created.
- */
-private fun configureOsmdroid(context: Context) {
-    val config = Configuration.getInstance()
-    config.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
-    config.userAgentValue = OSM_USER_AGENT
-    // A fresh cache directory, which also drops "Access blocked" tiles cached
-    // before the User-Agent was fixed. Android can clear it when space is low.
-    config.osmdroidTileCache = File(context.cacheDir, "map-tiles")
-}
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +50,7 @@ private fun configureOsmdroid(context: Context) {
 @Composable
 fun MapPickerScreen(
     existingLocation: ShopLocation?,
+    mapStyle: MapStyle,
     onBack: () -> Unit,
     onConfirm: (lat: Double, lng: Double, label: String) -> Unit
 ) {
@@ -186,7 +143,7 @@ fun MapPickerScreen(
                 factory = { ctx ->
                     MapView(ctx).also { mv ->
                         mapViewRef = mv
-                        mv.setTileSource(OsmTiles)
+                        mv.setTileSource(mapStyle.tileSource)
                         mv.setMultiTouchControls(true)
                         mv.controller.setZoom(17.0)
                         mv.controller.setCenter(GeoPoint(initialLat, initialLng))
@@ -227,6 +184,18 @@ fun MapPickerScreen(
                     modifier = Modifier.size(40.dp)
                 )
             }
+
+            // ── Attribution (required by OpenStreetMap and MapTiler) ──────────
+            Text(
+                mapStyle.attribution,
+                fontSize = 10.sp,
+                color = Color(0xFF333333),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            )
 
             // ── Current location FAB ──────────────────────────────────────────
             FloatingActionButton(
