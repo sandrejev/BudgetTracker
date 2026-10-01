@@ -2,6 +2,7 @@ package com.example.budgettracker.ui
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,6 +38,26 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import java.io.File
+
+// ── osmdroid setup ───────────────────────────────────────────────────────────
+
+/**
+ * Configures osmdroid to follow the OpenStreetMap tile usage policy
+ * (https://operations.osmfoundation.org/policies/tiles/), otherwise OSM's servers
+ * answer with "Access blocked" tiles:
+ * - a unique User-Agent that identifies this app (osmdroid's default and generic
+ *   "com.example" package names are shared by many apps and get blocked);
+ * - a persistent tile cache, so tiles aren't downloaded again on every visit.
+ */
+private fun configureOsmdroid(context: Context) {
+    val config = Configuration.getInstance()
+    config.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+    config.userAgentValue = "BudgetTracker/1.0 (Android budget app; +https://github.com/sandrejev/BudgetTracker)"
+    // A fresh cache directory, which also drops "Access blocked" tiles cached
+    // before the User-Agent was fixed. Android can clear it when space is low.
+    config.osmdroidTileCache = File(context.cacheDir, "osm-tiles")
+}
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
@@ -58,10 +79,8 @@ fun MapPickerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Initialise osmdroid user-agent (required before map is created)
-    LaunchedEffect(Unit) {
-        Configuration.getInstance().userAgentValue = context.packageName
-    }
+    // osmdroid must be configured before the MapView below is created
+    remember { configureOsmdroid(context) }
 
     // Track the map centre — updated via MapListener
     val initialLat = existingLocation?.latitude ?: 50.85
