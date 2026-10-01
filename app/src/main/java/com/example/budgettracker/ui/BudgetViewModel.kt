@@ -74,14 +74,12 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     val llmApiUrl: StateFlow<String> = settings.llmApiUrlFlow
-        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+        .stateIn(viewModelScope, SharingStarted.Eagerly, LlmClient.DEFAULT_GEMINI_URL)
 
     fun setLlmApiKey(key: String) = viewModelScope.launch { settings.setLlmApiKey(key) }
     fun setLlmApiUrl(url: String) = viewModelScope.launch { settings.setLlmApiUrl(url) }
 
-    private fun llmUrl() = llmApiUrl.value.ifBlank {
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
-    }
+    private fun llmUrl() = llmApiUrl.value.ifBlank { LlmClient.DEFAULT_GEMINI_URL }
 
     /** Test the LLM connection. Returns "Connected ✓" on success or an error description. */
     suspend fun testLlmConnection(): String {

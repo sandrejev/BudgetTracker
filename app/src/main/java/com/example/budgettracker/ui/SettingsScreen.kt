@@ -136,7 +136,7 @@ fun SettingsScreen(
 
             Text(
                 "Used to auto-generate a processor config when no matching parser is found. " +
-                        "Defaults to Gemini 3.8 Flash (free tier). Leave URL blank to use the default.",
+                        "Defaults to Gemini 3.8 Flash (free tier). Clear the URL and save to restore the default.",
                 fontSize = 12.sp,
                 color = Color(0xFF555555),
                 lineHeight = 18.sp
@@ -164,7 +164,7 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = apiUrlText,
                 onValueChange = { apiUrlText = it; llmSaved = false; testResult = null },
-                label = { Text("API URL (optional)") },
+                label = { Text("API URL") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("https://generativelanguage.googleapis.com/…", color = Color(0xFF444444), fontSize = 11.sp) },

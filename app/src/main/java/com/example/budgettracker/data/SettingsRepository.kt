@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.budgettracker.receipt.LlmClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -30,7 +31,10 @@ class SettingsRepository(private val context: Context) {
     }
 
     val llmApiKeyFlow: Flow<String> = context.dataStore.data.map { it[LLM_API_KEY] ?: "" }
-    val llmApiUrlFlow: Flow<String> = context.dataStore.data.map { it[LLM_API_URL] ?: "" }
+    // Blank or unset falls back to the default Gemini URL so the settings field is prefilled.
+    val llmApiUrlFlow: Flow<String> = context.dataStore.data.map {
+        it[LLM_API_URL]?.takeIf { url -> url.isNotBlank() } ?: LlmClient.DEFAULT_GEMINI_URL
+    }
 
     suspend fun setLlmApiKey(key: String) {
         context.dataStore.edit { it[LLM_API_KEY] = key }

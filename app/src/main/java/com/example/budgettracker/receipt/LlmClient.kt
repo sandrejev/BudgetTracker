@@ -9,11 +9,11 @@ import java.net.URL
 
 /**
  * Minimal HTTP client for calling an LLM API to generate processor configs.
- * Default: Google Gemini 2.5 Flash free-tier endpoint.
+ * Default: Google Gemini 3.8 Flash free-tier endpoint.
  */
 object LlmClient {
 
-    private const val DEFAULT_GEMINI_URL =
+    const val DEFAULT_GEMINI_URL =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
 
     /**
