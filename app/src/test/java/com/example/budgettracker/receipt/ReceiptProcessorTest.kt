@@ -1,5 +1,6 @@
 package com.example.budgettracker.receipt
 
+import com.example.budgettracker.data.ShopNameMatcher
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -139,5 +140,24 @@ class ReceiptProcessorTest {
     fun lidlEbonPdfFormatAllItemsIncludingPfand() {
         val (result, expected) = loadAndProcess("lidl_ebon")
         assertResult("lidl_ebon", result, expected)
+    }
+
+    /**
+     * The shop name is fuzzy-matched against saved shops using the first header
+     * lines: OCR noise ("LGDL"), extra words ("MH Müller Handels GmbH") and a
+     * shop name that isn't on the first line (REWE under "Klingenberg oHG").
+     */
+    @Test
+    fun shopNameIsMatchedFromHeaderLines() {
+        val shops = listOf("LIDL", "Müller", "REWE", "Penny")
+        fun shopFor(fixture: String): String? {
+            val doc = Level0Doc.fromJsonString(resourceText("/fixtures/$fixture.l0.json"))
+            return ShopNameMatcher.bestMatch(ReceiptProcessor.headerLines(doc), shops)
+        }
+        assertEquals("LIDL", shopFor("lidl_items"))
+        assertEquals("LIDL", shopFor("lidl_ebon"))
+        assertEquals("Müller", shopFor("muller_receipt"))
+        assertEquals("REWE", shopFor("rewe_single_item"))
+        assertEquals("REWE", shopFor("rewe_with_stk"))
     }
 }

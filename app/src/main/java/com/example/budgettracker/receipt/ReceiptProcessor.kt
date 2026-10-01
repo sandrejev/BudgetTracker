@@ -179,10 +179,18 @@ object ReceiptProcessor {
     }
 
     /** Extract the shop name from the first meaningful header line. */
-    fun extractShopName(doc: Level0Doc): String? {
-        val header = doc.sections.firstOrNull { it.type == "header" } ?: return null
-        val firstLine = header.lines.filterIsInstance<L0Line.Tokens>().firstOrNull() ?: return null
-        return firstLine.tokens.joinToString(" ") { it.text }.takeIf { it.isNotBlank() }
+    fun extractShopName(doc: Level0Doc): String? = headerLines(doc, maxLines = 1).firstOrNull()
+
+    /**
+     * The first [maxLines] non-blank header lines as plain text. The shop name is
+     * usually among them, though not always on the first line.
+     */
+    fun headerLines(doc: Level0Doc, maxLines: Int = 4): List<String> {
+        val header = doc.sections.firstOrNull { it.type == "header" } ?: return emptyList()
+        return header.lines.filterIsInstance<L0Line.Tokens>()
+            .map { line -> line.tokens.joinToString(" ") { it.text } }
+            .filter { it.isNotBlank() }
+            .take(maxLines)
     }
 
     /** Generate the LLM prompt to create a new processor config from a Level 0 doc. */

@@ -146,7 +146,8 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Returns new expense id. */
     suspend fun addExpenseAndGetId(amount: Double, note: String, shopName: String? = null): Long {
-        val id = dao.insert(Expense(amount = amount, note = note, timestamp = System.currentTimeMillis(), shopName = shopName?.takeIf { it.isNotBlank() }))
+        val shop = shopRepo.resolveOrCreate(shopName)
+        val id = dao.insert(Expense(amount = amount, note = note, timestamp = System.currentTimeMillis(), shopName = shop))
         refresh()
         return id
     }
@@ -160,11 +161,8 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateExpense(expense: Expense, amount: Double, note: String, shopName: String? = null) =
         viewModelScope.launch {
-            dao.update(expense.copy(amount = amount, note = note, shopName = shopName))
-            if (!shopName.isNullOrBlank()) {
-                val existing = shopRepo.findByName(shopName)
-                if (existing == null) shopRepo.insertShop(Shop(name = shopName))
-            }
+            val shop = shopRepo.resolveOrCreate(shopName)
+            dao.update(expense.copy(amount = amount, note = note, shopName = shop))
         }
 
     fun clearMonth(yearMonth: YearMonth) = viewModelScope.launch {
@@ -177,6 +175,10 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() { refreshTick.value = System.currentTimeMillis() }
 
     // ── Shops ─────────────────────────────────────────────────────────────────
+
+    /** All saved shops, sorted by name — used for shop-name suggestions. */
+    val shops: StateFlow<List<Shop>> =
+        shopRepo.allShops().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val shopsWithLocations: StateFlow<List<ShopWithLocations>> =
         shopRepo.allShopsWithLocations()
@@ -233,7 +235,7 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val processors = processorRepo.loadAll()
                 val detected = ReceiptProcessor.detectProcessor(doc, processors)
-                val shopName = ReceiptProcessor.extractShopName(doc)
+                val shopName = matchKnownShop(doc, detected) ?: ReceiptProcessor.extractShopName(doc)
 
                 // Always show the processor selector so the user can confirm or change
                 // the auto-detected processor; preselect it when one was found.
@@ -247,6 +249,17 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
                 receiptImportState.value = ReceiptImportState.Error(e.message ?: "Unknown error")
             }
         }
+    }
+
+    /**
+     * Fuzzy-matches the receipt header against saved shops, so OCR errors like
+     * "3Müller" or "LGDL" become "Müller" / "LIDL". Falls back to the name of the
+     * auto-detected processor's shop; null if neither applies.
+     */
+    private suspend fun matchKnownShop(doc: Level0Doc, detected: ProcessorConfig?): String? {
+        val known = shopRepo.allShopsOnce().map { it.name }
+        return ShopNameMatcher.bestMatch(ReceiptProcessor.headerLines(doc), known)
+            ?: detected?.name
     }
 
     fun applyProcessor(doc: Level0Doc, config: ProcessorConfig, shopName: String?) {
@@ -438,15 +451,12 @@ $numbered
         doc: Level0Doc,
         parsedReceipt: ParsedReceipt
     ) = viewModelScope.launch {
-        val expenseId = addExpenseAndGetId(amount, "Receipt", shopName)
-        // Ensure the shop name is persisted to the shops table so it appears in Manage Shops
-        if (!shopName.isNullOrBlank()) {
-            val existing = shopRepo.findByName(shopName)
-            if (existing == null) shopRepo.insertShop(Shop(name = shopName))
-        }
+        // Also saves the shop to the shops table so it appears in Manage Shops
+        val shop = shopRepo.resolveOrCreate(shopName)
+        val expenseId = addExpenseAndGetId(amount, "Receipt", shop)
         val receipt = Receipt(
             expenseId = expenseId,
-            shopName = shopName,
+            shopName = shop,
             rawJson = doc.toJsonString(),
             processorId = parsedReceipt.processorId
         )

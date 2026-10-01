@@ -12,6 +12,20 @@ class ShopRepository(private val dao: ShopDao) {
 
     fun allShops(): Flow<List<Shop>> = dao.getAllShops()
 
+    suspend fun allShopsOnce(): List<Shop> = dao.getAllShopsOnce()
+
+    /**
+     * Returns the saved spelling of [name] (case-insensitive, so "lidl" becomes "LIDL"),
+     * creating the shop if it doesn't exist yet. Blank names give null.
+     */
+    suspend fun resolveOrCreate(name: String?): String? {
+        val trimmed = name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        dao.getAllShopsOnce().firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
+            ?.let { return it.name }
+        dao.insertShop(Shop(name = trimmed))
+        return trimmed
+    }
+
     suspend fun insertShop(shop: Shop): Long = dao.insertShop(shop)
     suspend fun updateShop(shop: Shop) = dao.updateShop(shop)
     suspend fun deleteShop(shop: Shop) = dao.deleteShop(shop)
