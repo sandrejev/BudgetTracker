@@ -157,7 +157,7 @@ fun MapPickerScreen(
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
-                    MapView(ctx).also { mv ->
+                    MapView(ctx, AppTileProvider(ctx, mapStyle.tileSource)).also { mv ->
                         mapViewRef = mv
                         mv.setTileSource(mapStyle.tileSource)
                         // Draw tiles at their size in dp: ~5x fewer tiles to download
