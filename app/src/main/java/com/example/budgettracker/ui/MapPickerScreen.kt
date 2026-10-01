@@ -103,13 +103,16 @@ fun MapPickerScreen(
     // osmdroid must be configured before the MapView below is created
     remember { configureOsmdroid(context) }
 
-    // Track the map centre — updated via MapListener
+    // Track the map centre — updated via MapListener. Without a saved location the
+    // map starts at a fallback (Brussels) and jumps to the device location below.
     val initialLat = existingLocation?.latitude ?: 50.85
     val initialLng = existingLocation?.longitude ?: 4.35
     var centerLat by remember { mutableStateOf(initialLat) }
     var centerLng by remember { mutableStateOf(initialLng) }
     var label by remember { mutableStateOf(existingLocation?.label ?: "") }
     var locating by remember { mutableStateOf(false) }
+    // First fix after opening: jump straight there instead of animating across the map
+    var jumpToFirstFix by remember { mutableStateOf(existingLocation == null) }
 
     // MapView reference so we can animate to current location
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
@@ -135,9 +138,27 @@ fun MapPickerScreen(
         loc?.let { (lat, lng) ->
             centerLat = lat
             centerLng = lng
-            mapViewRef?.controller?.animateTo(GeoPoint(lat, lng))
+            val point = GeoPoint(lat, lng)
+            // Animating from the fallback position would pan across (and download) many tiles
+            if (jumpToFirstFix) mapViewRef?.controller?.setCenter(point)
+            else mapViewRef?.controller?.animateTo(point)
         }
+        jumpToFirstFix = false
         locating = false
+    }
+
+    fun locateMe() {
+        val perm = Manifest.permission.ACCESS_FINE_LOCATION
+        if (ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED) {
+            locating = true
+        } else {
+            locationPermissionLauncher.launch(perm)
+        }
+    }
+
+    // New location: start at where the user is now
+    LaunchedEffect(Unit) {
+        if (existingLocation == null) locateMe()
     }
 
     Scaffold(
@@ -209,14 +230,7 @@ fun MapPickerScreen(
 
             // ── Current location FAB ──────────────────────────────────────────
             FloatingActionButton(
-                onClick = {
-                    val perm = Manifest.permission.ACCESS_FINE_LOCATION
-                    if (ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED) {
-                        locating = true
-                    } else {
-                        locationPermissionLauncher.launch(perm)
-                    }
-                },
+                onClick = { locateMe() },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(16.dp),
