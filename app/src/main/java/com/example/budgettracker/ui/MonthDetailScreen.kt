@@ -170,7 +170,7 @@ fun MonthDetailScreen(
                         SwipeToDeleteWrapper(onDelete = { viewModel.deleteExpense(row.expense) }) {
                             ExpenseRow(
                                 expense = row.expense,
-                                showEdit = stats?.isCurrent == true,
+                                showEdit = true,
                                 onDelete = { viewModel.deleteExpense(row.expense) },
                                 onEdit = { editingExpense = row.expense },
                                 onReceiptDetail = onOpenReceiptDetail?.let { cb -> { cb(row.expense.id) } }
