@@ -31,7 +31,8 @@ import com.example.budgettracker.ui.theme.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.TileSourcePolicy
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
@@ -42,21 +43,41 @@ import java.io.File
 
 // ── osmdroid setup ───────────────────────────────────────────────────────────
 
+// Follows the OpenStreetMap tile usage policy
+// (https://operations.osmfoundation.org/policies/tiles/); otherwise OSM's servers
+// answer with "Access blocked" tiles.
+
+private const val OSM_USER_AGENT =
+    "BudgetTracker/1.0 (Android budget app; +https://github.com/sandrejev/BudgetTracker)"
+
 /**
- * Configures osmdroid to follow the OpenStreetMap tile usage policy
- * (https://operations.osmfoundation.org/policies/tiles/), otherwise OSM's servers
- * answer with "Access blocked" tiles:
- * - a unique User-Agent that identifies this app (osmdroid's default and generic
- *   "com.example" package names are shared by many apps and get blocked);
- * - a persistent tile cache, so tiles aren't downloaded again on every visit.
+ * Same as osmdroid's TileSourceFactory.MAPNIK, minus FLAG_USER_AGENT_NORMALIZED.
+ * With that flag osmdroid ignores [OSM_USER_AGENT] and sends "<packageName>/<versionCode>",
+ * and OSM blocks every "com.example.*" app as unidentifiable.
+ */
+private val OsmTiles = XYTileSource(
+    "Mapnik", 0, 19, 256, ".png",
+    arrayOf("https://tile.openstreetmap.org/"),
+    "© OpenStreetMap contributors",
+    TileSourcePolicy(
+        2,
+        TileSourcePolicy.FLAG_NO_BULK or
+            TileSourcePolicy.FLAG_NO_PREVENTIVE or
+            TileSourcePolicy.FLAG_USER_AGENT_MEANINGFUL
+    )
+)
+
+/**
+ * Sets a unique User-Agent and a persistent tile cache, so tiles aren't
+ * downloaded again on every visit. Must run before a MapView is created.
  */
 private fun configureOsmdroid(context: Context) {
     val config = Configuration.getInstance()
     config.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
-    config.userAgentValue = "BudgetTracker/1.0 (Android budget app; +https://github.com/sandrejev/BudgetTracker)"
+    config.userAgentValue = OSM_USER_AGENT
     // A fresh cache directory, which also drops "Access blocked" tiles cached
     // before the User-Agent was fixed. Android can clear it when space is low.
-    config.osmdroidTileCache = File(context.cacheDir, "osm-tiles")
+    config.osmdroidTileCache = File(context.cacheDir, "map-tiles")
 }
 
 // ── Screen ───────────────────────────────────────────────────────────────────
@@ -144,7 +165,7 @@ fun MapPickerScreen(
                 factory = { ctx ->
                     MapView(ctx).also { mv ->
                         mapViewRef = mv
-                        mv.setTileSource(TileSourceFactory.MAPNIK)
+                        mv.setTileSource(OsmTiles)
                         mv.setMultiTouchControls(true)
                         mv.controller.setZoom(17.0)
                         mv.controller.setCenter(GeoPoint(initialLat, initialLng))
