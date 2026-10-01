@@ -22,9 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import kotlinx.coroutines.launch
 import com.example.budgettracker.data.ReceiptItem
-import com.example.budgettracker.data.ReceiptWithItems
 import com.example.budgettracker.receipt.Level0Doc
-import com.example.budgettracker.receipt.ProcessorConfig
 import com.example.budgettracker.receipt.ReceiptProcessor
 import com.example.budgettracker.receipt.parsePrice
 import com.example.budgettracker.ui.theme.*

@@ -1,0 +1,12 @@
+{
+  "processorId": "lidl",
+  "items": [
+    {"name": "Ramen Nudeln", "price": 0.99},
+    {"name": "Perlenb. PremiumPils", "price": 0.39},
+    {"name": "Pfand 0,25 EM", "price": 0.25},
+    {"name": "Cola 0% Zucker", "price": 0.65},
+    {"name": "Pfand 0,25 EM", "price": 0.25},
+    {"name": "Zigaretten Gold", "price": 6.30}
+  ],
+  "total": 8.83
+}

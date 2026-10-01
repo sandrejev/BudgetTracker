@@ -1,0 +1,30 @@
+{
+  "source": "pdf",
+  "page_w": 500,
+  "sections": [
+    {
+      "type": "header",
+      "lines": [
+        [{"t": "Lidl Dienstleistung GmbH & Co. KG", "x": 0.00}],
+        [{"t": "Berliner Straße 2", "x": 0.00}],
+        [{"t": "76571 Gaggenau", "x": 0.00}],
+        [{"t": "Datum: 28.09.2026", "x": 0.00}, {"t": "Uhrzeit: 18:37 Uhr", "x": 0.58}],
+        [{"t": "Artikel", "x": 0.00}, {"t": "EUR", "x": 0.88}],
+        [{"t": "Ramen Nudeln", "x": 0.00}, {"t": "0,99 A", "x": 0.88}],
+        [{"t": "Perlenb. PremiumPils", "x": 0.00}, {"t": "0,39 B", "x": 0.88}],
+        [{"t": "Pfand 0,25 EM", "x": 0.00}, {"t": "0,25 B", "x": 0.88}],
+        [{"t": "Cola 0% Zucker", "x": 0.00}, {"t": "0,65 B", "x": 0.88}],
+        [{"t": "Pfand 0,25 EM", "x": 0.00}, {"t": "0,25 B", "x": 0.88}],
+        [{"t": "Zigaretten Gold", "x": 0.00}, {"t": "6,30 B", "x": 0.88}]
+      ]
+    },
+    {
+      "type": "body",
+      "lines": [
+        [{"t": "zu zahlen", "x": 0.00}, {"t": "8,83", "x": 0.84}],
+        [{"t": "Karte", "x": 0.00}, {"t": "8,83", "x": 0.84}],
+        [{"t": "+9 Lidl Punkte", "x": 0.00}]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "processorId": "lidl",
+  "items": [
+    {"name": "BANANEN", "price": 0.79},
+    {"name": "MILCH 1,5%", "price": 0.89},
+    {"name": "VOLLKORNBROT", "price": 1.49}
+  ],
+  "total": 2.87
+}

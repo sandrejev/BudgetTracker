@@ -1,0 +1,9 @@
+{
+  "processorId": "rewe",
+  "items": [
+    {"name": "ROTE LINSEN", "price": 1.99},
+    {"name": "HAFER MILCH", "price": 1.49},
+    {"name": "BIO APFEL", "price": 2.29}
+  ],
+  "total": 5.77
+}

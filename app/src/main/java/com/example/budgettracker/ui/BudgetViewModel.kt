@@ -308,7 +308,7 @@ $numbered
             List(itemNames.size) { i ->
                 if (i < jsonArray.length()) jsonArray.optString(i).takeIf { it.isNotBlank() } else null
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             List(itemNames.size) { null }
         }
     }
@@ -350,7 +350,7 @@ $numbered
             result[i + 1] = commonName
             val entry = commonNameDao.findByName(commonName)
             if (entry != null) commonNameDao.update(entry.copy(usageCount = entry.usageCount + 1))
-            else commonNameDao.insert(com.example.budgettracker.data.CommonName(name = commonName))
+            else commonNameDao.insert(CommonName(name = commonName))
         }
         return result
     }
@@ -360,7 +360,7 @@ $numbered
      * Returns a map of 1-based index → common name for the caller to apply to local state.
      */
     suspend fun resolveNamesForReview(names: List<String>): Map<Int, String> =
-        try { callLlmForCommonNames(names) } catch (e: Exception) { emptyMap() }
+        try { callLlmForCommonNames(names) } catch (_: Exception) { emptyMap() }
 
     /**
      * Uses the LLM to assign a short common name to each receipt item.
@@ -370,7 +370,7 @@ $numbered
      * - Each item's [ReceiptItem.category] column is updated with the resolved name.
      * Returns a map of itemId → resolved common name.
      */
-    suspend fun resolveCommonNamesWithLlm(items: List<com.example.budgettracker.data.ReceiptItem>): Map<Long, String> {
+    suspend fun resolveCommonNamesWithLlm(items: List<ReceiptItem>): Map<Long, String> {
         val key = llmApiKey.value
         if (key.isBlank() || items.isEmpty()) return emptyMap()
         val url = llmUrl()
@@ -411,14 +411,14 @@ $numbered
                 if (existingEntry != null) {
                     commonNameDao.update(existingEntry.copy(usageCount = existingEntry.usageCount + 1))
                 } else {
-                    commonNameDao.insert(com.example.budgettracker.data.CommonName(name = commonName))
+                    commonNameDao.insert(CommonName(name = commonName))
                 }
 
                 // Write back to the receipt item's category field
                 receiptDao.updateItem(item.copy(category = commonName))
             }
             result
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyMap()
         }
     }
@@ -507,7 +507,7 @@ $numbered
             ExportImport.import(getApplication(), db, jsonString)
             refresh()
             onDone(true)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             onDone(false)
         }
     }
