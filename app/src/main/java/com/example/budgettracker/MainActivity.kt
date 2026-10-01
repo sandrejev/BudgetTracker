@@ -35,6 +35,9 @@ private sealed class Screen {
     object ShopManagement : Screen()
     object ProcessorManagement : Screen()
     object Changelog : Screen()
+    object CommonNames : Screen()
+    data class CommonNameDetail(val commonNameId: Long) : Screen()
+    object Categories : Screen()
     /** Receipt import/review pipeline — driven by viewModel.receiptImportState */
     object ReceiptFlow : Screen()
     /** fromMonth = null when navigated from MainScreen (back goes to Main) */
@@ -120,10 +123,29 @@ private fun BudgetApp(
                 onBack = { screen = Screen.Main },
                 onOpenShopManagement = { screen = Screen.ShopManagement },
                 onOpenProcessorManagement = { screen = Screen.ProcessorManagement },
+                onOpenCommonNames = { screen = Screen.CommonNames },
+                onOpenCategories = { screen = Screen.Categories },
                 onOpenChangelog = { screen = Screen.Changelog }
             )
 
             is Screen.Changelog -> ChangelogScreen(
+                onBack = { screen = Screen.Settings }
+            )
+
+            is Screen.CommonNames -> CommonNamesScreen(
+                viewModel = viewModel,
+                onBack = { screen = Screen.Settings },
+                onOpen = { id -> screen = Screen.CommonNameDetail(id) }
+            )
+
+            is Screen.CommonNameDetail -> CommonNameDetailScreen(
+                viewModel = viewModel,
+                commonNameId = current.commonNameId,
+                onBack = { screen = Screen.CommonNames }
+            )
+
+            is Screen.Categories -> CategoriesScreen(
+                viewModel = viewModel,
                 onBack = { screen = Screen.Settings }
             )
 

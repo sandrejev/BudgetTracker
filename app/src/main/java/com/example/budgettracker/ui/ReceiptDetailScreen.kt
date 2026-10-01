@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flowOf
 import com.example.budgettracker.data.ReceiptItem
 import com.example.budgettracker.receipt.Level0Doc
 import com.example.budgettracker.receipt.ReceiptProcessor
@@ -46,6 +47,11 @@ fun ReceiptDetailScreen(
 
     val receipt = receiptData?.receipt
     val items = receiptData?.items ?: emptyList()
+    // Common name + category per item id, live from the shared name tables
+    val itemNames by remember(receipt?.id) {
+        receipt?.let { viewModel.itemNamesForReceipt(it.id) } ?: flowOf(emptyMap())
+    }.collectAsState(initial = emptyMap())
+    val commonNameSuggestions by viewModel.commonNameStrings.collectAsState()
     val total = items.sumOf { it.totalPrice }
 
     Scaffold(
@@ -66,8 +72,10 @@ fun ReceiptDetailScreen(
                                 if (!resolvingNames) {
                                     resolvingNames = true
                                     scope.launch {
-                                        reprocessResult = viewModel.resolveCommonNamesWithLlm(items).fold(
-                                            onSuccess = { "✓ Common names resolved for ${it.size} of ${items.size} items" },
+                                        val missing = items.count { itemNames[it.id]?.commonName == null }
+                                        reprocessResult = if (missing == 0) "✓ All items already have a common name"
+                                        else viewModel.resolveCommonNamesWithLlm(items, itemNames).fold(
+                                            onSuccess = { "✓ Common names resolved for $it of $missing items" },
                                             onFailure = { "Couldn't resolve names: ${it.message?.take(200)}" }
                                         )
                                         resolvingNames = false
@@ -147,9 +155,10 @@ fun ReceiptDetailScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        if (!item.category.isNullOrBlank()) {
+                        val info = itemNames[item.id]
+                        if (info?.commonName != null) {
                             Text(
-                                item.category,
+                                listOfNotNull(info.commonName, info.categoryName).joinToString(" · "),
                                 color = Color(0xFF6A9B6A),
                                 fontSize = 11.sp,
                                 fontStyle = FontStyle.Italic
@@ -196,8 +205,10 @@ fun ReceiptDetailScreen(
 
     // Edit item dialog
     editingItem?.let { item ->
+        val originalCommonName = itemNames[item.id]?.commonName ?: ""
         var nameText by remember { mutableStateOf(item.name) }
         var priceText by remember { mutableStateOf("%.2f".format(item.totalPrice).replace('.', ',')) }
+        var commonNameText by remember { mutableStateOf(originalCommonName) }
         AlertDialog(
             onDismissRequest = { editingItem = null },
             containerColor = CardDark,
@@ -215,12 +226,31 @@ fun ReceiptDetailScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(), colors = detailFieldColors()
                     )
+                    ShopNameField(
+                        value = commonNameText,
+                        onValueChange = { commonNameText = it },
+                        shopNames = commonNameSuggestions,
+                        label = { Text("Common name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = detailFieldColors(),
+                        suggestionIcon = Icons.Filled.ShoppingCart,
+                        newEntryLabel = { "Add \"$it\" as new common name" }
+                    )
+                    Text(
+                        "The common name applies to all receipts with this item text.",
+                        color = Color(0xFF777777), fontSize = 11.sp
+                    )
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val price = parsePrice(priceText) ?: priceText.replace(',', '.').toDoubleOrNull() ?: return@TextButton
-                    viewModel.updateReceiptItem(item.copy(name = nameText.trim(), totalPrice = price))
+                    val nameChanged = nameText.trim() != item.name.trim()
+                    val commonNameChanged = commonNameText.trim() != originalCommonName
+                    // A renamed item text keeps the common name shown in the dialog
+                    val commonName = if (commonNameChanged || (nameChanged && commonNameText.isNotBlank()))
+                        commonNameText else null
+                    viewModel.saveReceiptItem(item, nameText, price, commonName)
                     editingItem = null
                 }) { Text("Save", color = Positive) }
             },
@@ -288,7 +318,7 @@ fun ReceiptDetailScreen(
                                     viewModel.confirmReceiptImport(
                                         shopName = receipt.shopName,
                                         amount = parsed.detectedTotal ?: parsed.items.sumOf { it.price },
-                                        items = parsed.items.map { Triple(it.name, it.price, null) },
+                                        items = parsed.items.map { ReviewedItem(it.name, it.price) },
                                         doc = doc,
                                         parsedReceipt = parsed
                                     )

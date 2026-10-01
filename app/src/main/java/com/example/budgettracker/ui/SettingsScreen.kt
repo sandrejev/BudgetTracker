@@ -7,6 +7,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.ShoppingCart
 import com.example.budgettracker.ui.icons.ChevronRight
 import com.example.budgettracker.ui.icons.Code
 import com.example.budgettracker.ui.icons.History
@@ -18,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -36,6 +39,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenShopManagement: () -> Unit = {},
     onOpenProcessorManagement: () -> Unit = {},
+    onOpenCommonNames: () -> Unit = {},
+    onOpenCategories: () -> Unit = {},
     onOpenChangelog: () -> Unit = {}
 ) {
     val monthlyLimit by viewModel.monthlyLimit.collectAsState()
@@ -268,6 +273,26 @@ fun SettingsScreen(
 
             HorizontalDivider(color = Color(0xFF222830))
 
+            // ── Common item names ─────────────────────────────────────────────
+            SettingsLinkRow(
+                icon = Icons.Filled.ShoppingCart,
+                title = "Common item names",
+                subtitle = "Edit how receipt texts are named, merge duplicates",
+                onClick = onOpenCommonNames
+            )
+
+            HorizontalDivider(color = Color(0xFF222830))
+
+            // ── Item categories ───────────────────────────────────────────────
+            SettingsLinkRow(
+                icon = Icons.AutoMirrored.Filled.List,
+                title = "Item categories",
+                subtitle = "Groups like \"Fresh fruits\" for common item names",
+                onClick = onOpenCategories
+            )
+
+            HorizontalDivider(color = Color(0xFF222830))
+
             // ── Processor management ──────────────────────────────────────────
             Row(
                 modifier = Modifier
@@ -317,6 +342,25 @@ private fun InfoRow(label: String, value: String) {
     ) {
         Text(label, fontSize = 14.sp, color = Color(0xFF888888))
         Text(value, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun SettingsLinkRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = Color(0xFF888888), modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, color = Color.White)
+            Text(subtitle, fontSize = 12.sp, color = Color(0xFF666666))
+        }
+        Icon(Icons.Filled.ChevronRight, null, tint = Color(0xFF555555))
     }
 }
 

@@ -13,6 +13,7 @@ import com.example.budgettracker.receipt.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -51,6 +52,14 @@ sealed class ReceiptImportState {
     data class LlmGenerating(val doc: Level0Doc, val prompt: String) : ReceiptImportState()
     data class Error(val message: String) : ReceiptImportState()
 }
+
+/** One item of a reviewed receipt, with the common name / category chosen in the review. */
+data class ReviewedItem(
+    val name: String,
+    val price: Double,
+    val commonName: String? = null,
+    val category: String? = null
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BudgetViewModel(app: Application) : AndroidViewModel(app) {
@@ -297,116 +306,168 @@ class BudgetViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * Asks the LLM to assign a short category label to each item name.
-     * Returns a list of the same length as [itemNames]; entries are null when
-     * the API key is absent or categorization fails.
-     */
-    suspend fun categorizeItemsWithLlm(itemNames: List<String>): List<String?> {
-        val key = llmApiKey.value
-        if (key.isBlank() || itemNames.isEmpty()) return List(itemNames.size) { null }
-        return try {
-            val url = llmUrl()
-            val numbered = itemNames.mapIndexed { i, n -> "${i + 1}. $n" }.joinToString("\n")
-            val prompt = """
-You are a grocery receipt categorizer.
-Given the following numbered list of receipt line-item names, return ONLY a JSON array of short category strings (one per item, same order).
-Use concise English category labels such as: Dairy, Meat, Fish, Bakery, Produce, Frozen, Snacks, Beverages, Alcohol, Household, Personal Care, Other.
-Do not add any explanation — output only the JSON array.
+    // ── Common item names & categories ────────────────────────────────────────
 
-Items:
-$numbered
-""".trimIndent()
-            val response = LlmClient.generate(prompt, key, url)
-            // Extract JSON array from response
-            val text = response.trim()
-            val start = text.indexOf('[')
-            val end = text.lastIndexOf(']')
-            if (start < 0 || end <= start) return List(itemNames.size) { null }
-            val jsonArray = org.json.JSONArray(text.substring(start, end + 1))
-            List(itemNames.size) { i ->
-                if (i < jsonArray.length()) jsonArray.optString(i).takeIf { it.isNotBlank() } else null
-            }
-        } catch (_: Exception) {
-            List(itemNames.size) { null }
-        }
+    private val itemNameDao = db.itemNameDao()
+    private val itemNames = ItemNameRepository(itemNameDao)
+
+    val categories: StateFlow<List<ItemCategory>> = itemNameDao.categories()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val categoriesWithCounts: Flow<List<CategoryWithCount>> = itemNameDao.categoriesWithCounts()
+
+    /** All common name strings, for autocomplete. */
+    val commonNameStrings: StateFlow<List<String>> = itemNameDao.commonNameStrings()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Search text on the common names page; matches common names and receipt item texts. */
+    val commonNameQuery = MutableStateFlow("")
+
+    @OptIn(FlowPreview::class)
+    val commonNameResults: StateFlow<List<CommonNameRow>> = commonNameQuery
+        .debounce(200)
+        .flatMapLatest { itemNameDao.searchCommonNames(it.trim(), 500) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun commonName(id: Long): Flow<CommonName?> = itemNameDao.commonName(id)
+    fun aliasesFor(commonNameId: Long): Flow<List<AliasRow>> = itemNameDao.aliasesFor(commonNameId)
+    suspend fun searchAliases(query: String): List<AliasRow> = itemNameDao.searchAliases(query.trim())
+
+    /** Common name and category per receipt item id. */
+    fun itemNamesForReceipt(receiptId: Long): Flow<Map<Long, ItemNameInfo>> =
+        itemNameDao.itemNamesForReceipt(receiptId).map { list -> list.associateBy { it.itemId } }
+
+    /** Creates a common name; returns its id, or an error if the name exists already. */
+    suspend fun createCommonName(name: String, categoryId: Long?): Result<Long> = runCatching {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "Name can't be empty" }
+        require(itemNameDao.findCommonName(trimmed) == null) { "\"$trimmed\" already exists" }
+        itemNameDao.insertCommonName(CommonName(name = trimmed, categoryId = categoryId, usageCount = 0))
     }
 
+    /** Renames / re-categorizes; fails if another common name already has [name]. */
+    suspend fun updateCommonName(commonName: CommonName, name: String, categoryId: Long?): Result<Unit> =
+        runCatching {
+            val trimmed = name.trim()
+            require(trimmed.isNotEmpty()) { "Name can't be empty" }
+            val clash = itemNameDao.findCommonName(trimmed)
+            require(clash == null || clash.id == commonName.id) {
+                "\"$trimmed\" already exists. Select both in the list and merge them instead."
+            }
+            itemNameDao.updateCommonName(commonName.copy(name = trimmed, categoryId = categoryId))
+        }
+
+    /** Deletes common names; their receipt items keep their text but lose the common name. */
+    fun deleteCommonNames(ids: List<Long>) = viewModelScope.launch { itemNameDao.deleteCommonNames(ids) }
+
+    /** Merges [ids] into [keepId], renamed to [name] (must not clash with an unmerged name). */
+    suspend fun mergeCommonNames(ids: List<Long>, keepId: Long, name: String, categoryId: Long?): Result<Unit> =
+        runCatching {
+            val trimmed = name.trim()
+            require(trimmed.isNotEmpty()) { "Name can't be empty" }
+            val clash = itemNameDao.findCommonName(trimmed)
+            require(clash == null || clash.id in ids) { "\"$trimmed\" already exists" }
+            val keep = itemNameDao.commonNamesOnce(listOf(keepId)).single()
+            itemNameDao.merge(keep.copy(name = trimmed, categoryId = categoryId), ids)
+        }
+
+    /** Makes receipt text [rawName] convert to the common name [commonNameId] (on all receipts). */
+    fun linkAlias(rawName: String, commonNameId: Long) = viewModelScope.launch {
+        itemNames.aliasIdFor(rawName)?.let { itemNameDao.setAliasCommonName(it, commonNameId) }
+    }
+
+    /** Receipt text [aliasId] no longer converts to any common name. */
+    fun unlinkAlias(aliasId: Long) = viewModelScope.launch { itemNameDao.setAliasCommonName(aliasId, null) }
+
+    /** Changes what one receipt text converts to (on all receipts); blank removes the link. */
+    fun setCommonNameForItem(rawName: String, commonName: String) = viewModelScope.launch {
+        itemNames.assign(rawName, commonName)
+    }
+
+    suspend fun addCategory(name: String): Result<Unit> = runCatching {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "Name can't be empty" }
+        require(itemNameDao.findCategory(trimmed) == null) { "\"$trimmed\" already exists" }
+        itemNameDao.insertCategory(ItemCategory(name = trimmed, sortOrder = itemNameDao.maxCategorySortOrder() + 1))
+    }
+
+    suspend fun renameCategory(category: ItemCategory, name: String): Result<Unit> = runCatching {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "Name can't be empty" }
+        val clash = itemNameDao.findCategory(trimmed)
+        require(clash == null || clash.id == category.id) { "\"$trimmed\" already exists" }
+        itemNameDao.updateCategory(category.copy(name = trimmed))
+    }
+
+    /** Deletes a category; its common names become uncategorized. */
+    fun deleteCategory(category: ItemCategory) = viewModelScope.launch { itemNameDao.deleteCategory(category) }
+
     /**
-     * Core LLM call: maps a list of raw names → common names (by 1-based index).
-     * Also persists new / increments existing entries in [common_names].
-     */
-    /**
-     * Asks the LLM for a common name per item; returns 1-based index → name.
+     * Asks the LLM for a common name and category per item; returns 1-based index → suggestion.
      * Throws with a message for the user when there's no API key, the request fails
      * or the answer contains no names.
      */
-    private suspend fun callLlmForCommonNames(names: List<String>): Map<Int, String> {
+    private suspend fun callLlmForCommonNames(names: List<String>): Map<Int, NameSuggestion> {
         if (names.isEmpty()) return emptyMap()
         val key = llmApiKey.value
         if (key.isBlank()) error("No LLM API key set. Go to Settings → LLM receipt parsing.")
-        val commonNameDao = db.commonNameDao()
-        val existing = commonNameDao.getAll().map { it.name }
-        val existingList = if (existing.isNotEmpty()) existing.joinToString(", ") else "none yet"
-        val numbered = names.mapIndexed { i, n -> "${i + 1}. $n" }.joinToString("\n")
-
-        val prompt = """
-You are a receipt item name normalizer.
-Known common names already in the database: $existingList
-
-For each numbered receipt item below, assign a short human-readable common name in English.
-PREFER to reuse a name from the known list when it clearly fits.
-When none fit, propose a concise new name (2–4 words, lowercase, e.g. "whole milk", "sourdough bread", "chicken breast").
-
-Return ONLY a JSON object mapping each item number (as a string key) to its common name.
-Example: {"1": "whole milk", "2": "sourdough bread", "3": "orange juice"}
-
-Items:
-$numbered
-""".trimIndent()
+        val categoryNames = itemNameDao.categoriesOnce().map { it.name }
+        // The most used names, so the prompt stays small even with a large name list
+        val known = itemNameDao.frequentCommonNames(300)
+        val prompt = CommonNamePrompt.build(names, known, categoryNames)
 
         val response = LlmClient.generate(prompt, key, llmUrl())
         val json = LlmClient.extractJsonFromResponse(response)
             ?: error("The LLM answer contained no JSON: ${response.take(120)}")
-        val jsonObj = org.json.JSONObject(json)
-
-        val result = mutableMapOf<Int, String>()
-        names.forEachIndexed { i, _ ->
-            val commonName = jsonObj.optString("${i + 1}").takeIf { it.isNotBlank() } ?: return@forEachIndexed
-            result[i + 1] = commonName
-            val entry = commonNameDao.findByName(commonName)
-            if (entry != null) commonNameDao.update(entry.copy(usageCount = entry.usageCount + 1))
-            else commonNameDao.insert(CommonName(name = commonName))
-        }
+        val result = CommonNamePrompt.parse(json, names.size, categoryNames)
         if (result.isEmpty()) error("The LLM returned no names")
         return result
     }
 
     /**
-     * Resolves common names for items that are still in the review stage (not yet in DB).
-     * Returns a map of 1-based index → common name for the caller to apply to local state.
+     * Common names for items still in the review stage (not yet saved); 1-based index →
+     * suggestion. Texts with a known conversion are answered from the database; only the
+     * rest go to the LLM.
      */
-    suspend fun resolveNamesForReview(names: List<String>): Result<Map<Int, String>> =
-        runCatching { callLlmForCommonNames(names) }
+    suspend fun resolveNamesForReview(names: List<String>): Result<Map<Int, NameSuggestion>> =
+        runCatching {
+            val known = itemNames.knownNames(names)
+            val result = mutableMapOf<Int, NameSuggestion>()
+            val unknown = mutableListOf<Int>()   // 0-based positions in names
+            names.forEachIndexed { i, raw ->
+                val k = known[raw.trim()]
+                if (k != null) result[i + 1] = NameSuggestion(k.commonName, k.categoryName)
+                else unknown += i
+            }
+            val suggested = callLlmForCommonNames(unknown.map { names[it] })
+            suggested.forEach { (j, suggestion) -> result[unknown[j - 1] + 1] = suggestion }
+            result
+        }
+
+    /** Known common names (from earlier receipts) for review rows; 1-based index → suggestion. */
+    suspend fun knownNamesForReview(names: List<String>): Map<Int, NameSuggestion> {
+        val known = itemNames.knownNames(names)
+        return names.withIndex().mapNotNull { (i, raw) ->
+            known[raw.trim()]?.let { i + 1 to NameSuggestion(it.commonName, it.categoryName) }
+        }.toMap()
+    }
 
     /**
-     * Uses the LLM to assign a short common name to each receipt item.
-     * - Fetches all known common names from the DB and offers them to the LLM first.
-     * - The LLM reuses an existing name if it fits, otherwise proposes a new one.
-     * - New names are inserted into [common_names]; existing ones get their usageCount bumped.
-     * - Each item's [ReceiptItem.category] column is updated with the resolved name.
-     * Returns a map of itemId → resolved common name.
+     * Resolves common names for a saved receipt's items that don't have one yet, via the
+     * LLM; the result applies to every receipt with the same item text. Returns how many
+     * items got a name.
      */
-    suspend fun resolveCommonNamesWithLlm(items: List<ReceiptItem>): Result<Map<Long, String>> =
+    suspend fun resolveCommonNamesWithLlm(items: List<ReceiptItem>, names: Map<Long, ItemNameInfo>): Result<Int> =
         runCatching {
-            val byIndex = callLlmForCommonNames(items.map { it.name })
-            val receiptDao = db.receiptDao()
-            items.withIndex().mapNotNull { (i, item) ->
-                val commonName = byIndex[i + 1] ?: return@mapNotNull null
-                // Write back to the receipt item's category field
-                receiptDao.updateItem(item.copy(category = commonName))
-                item.id to commonName
-            }.toMap()
+            val missing = items.filter { names[it.id]?.commonName == null }
+            val rawNames = missing.map { it.name.trim() }.distinct()
+            val suggested = callLlmForCommonNames(rawNames)
+            suggested.forEach { (i, s) ->
+                itemNames.assign(rawNames[i - 1], s.name, s.category)
+                itemNames.countUsage(s.name)
+            }
+            val resolved = suggested.keys.map { rawNames[it - 1] }.toSet()
+            missing.count { it.name.trim() in resolved }
         }
 
     /** Reprocess a stored receipt's Level 0 JSON with any given processor config. */
@@ -415,12 +476,11 @@ $numbered
         return ReceiptProcessor.process(doc, config)
     }
 
-    /** Confirm the reviewed receipt: create expense + receipt + items in DB.
-     *  [items] is a list of Triple(name, price, commonName?) — commonName goes into [ReceiptItem.category]. */
+    /** Confirm the reviewed receipt: create expense + receipt + items in DB. */
     fun confirmReceiptImport(
         shopName: String?,
         amount: Double,
-        items: List<Triple<String, Double, String?>>,
+        items: List<ReviewedItem>,
         doc: Level0Doc,
         parsedReceipt: ParsedReceipt
     ) = viewModelScope.launch {
@@ -434,18 +494,34 @@ $numbered
             processorId = parsedReceipt.processorId
         )
         val receiptId = receiptRepo.insertReceipt(receipt)
-        val receiptItems = items.mapIndexed { i, (name, price, commonName) ->
-            ReceiptItem(receiptId = receiptId, name = name, totalPrice = price, sortOrder = i, category = commonName)
+        val receiptItems = items.mapIndexed { i, item ->
+            // A name from the review applies to all receipts with this item text
+            val aliasId = if (item.commonName.isNullOrBlank()) itemNames.aliasIdFor(item.name)
+            else itemNames.assign(item.name, item.commonName, item.category)
+                .also { itemNames.countUsage(item.commonName) }
+            ReceiptItem(receiptId = receiptId, name = item.name, totalPrice = item.price, sortOrder = i, aliasId = aliasId)
         }
         receiptRepo.replaceItems(receiptId, receiptItems)
         receiptImportState.value = ReceiptImportState.Idle
         refresh()
     }
 
-    fun updateReceiptItem(item: ReceiptItem) = viewModelScope.launch { receiptRepo.updateItem(item) }
+    fun updateReceiptItem(item: ReceiptItem) = viewModelScope.launch {
+        receiptRepo.updateItem(item.copy(aliasId = itemNames.aliasIdFor(item.name)))
+    }
+    /**
+     * Saves an edited receipt item. A non-null [commonName] becomes the common name of the
+     * item's text on all receipts (blank removes it); null leaves it unchanged.
+     */
+    fun saveReceiptItem(item: ReceiptItem, name: String, price: Double, commonName: String?) =
+        viewModelScope.launch {
+            val raw = name.trim()
+            val aliasId = if (commonName == null) itemNames.aliasIdFor(raw) else itemNames.assign(raw, commonName)
+            receiptRepo.updateItem(item.copy(name = raw, totalPrice = price, aliasId = aliasId))
+        }
     fun deleteReceiptItem(item: ReceiptItem) = viewModelScope.launch { receiptRepo.deleteItem(item) }
     fun addReceiptItem(receiptId: Long, name: String, price: Double) = viewModelScope.launch {
-        receiptRepo.insertItem(ReceiptItem(receiptId = receiptId, name = name, totalPrice = price))
+        receiptRepo.insertItem(ReceiptItem(receiptId = receiptId, name = name, totalPrice = price, aliasId = itemNames.aliasIdFor(name)))
     }
 
     fun resetReceiptImport() { receiptImportState.value = ReceiptImportState.Idle }

@@ -1,3 +1,14 @@
+## v1.5.0 — 2026-10-01 — Common Item Names & Categories
+
+- Receipt items now link to a shared "receipt text → common name" table: changing a name changes it on all receipts
+- Settings → Common item names: search names and receipt texts, rename, set category, add or remove receipt texts
+- Select several common names (long-press) to merge them, or delete them
+- Settings → Item categories: 26 everyday grocery categories to start with; add, rename and delete
+- The LLM suggests a category together with the common name
+- Items bought before get their common name instantly, without asking the LLM
+- Edit a receipt item's common name directly in the receipt (applies to all receipts)
+- Export / import includes categories, common names and receipt texts
+
 ## v1.4.0 — 2026-10-01 — Shop Name Matching
 
 - Shop name from a receipt is fuzzy-matched to your saved shops, so OCR errors like "3Müller" or "LGDL" become "Müller" / "LIDL"
