@@ -336,9 +336,15 @@ $numbered
      * Core LLM call: maps a list of raw names → common names (by 1-based index).
      * Also persists new / increments existing entries in [common_names].
      */
+    /**
+     * Asks the LLM for a common name per item; returns 1-based index → name.
+     * Throws with a message for the user when there's no API key, the request fails
+     * or the answer contains no names.
+     */
     private suspend fun callLlmForCommonNames(names: List<String>): Map<Int, String> {
+        if (names.isEmpty()) return emptyMap()
         val key = llmApiKey.value
-        if (key.isBlank() || names.isEmpty()) return emptyMap()
+        if (key.isBlank()) error("No LLM API key set. Go to Settings → LLM receipt parsing.")
         val commonNameDao = db.commonNameDao()
         val existing = commonNameDao.getAll().map { it.name }
         val existingList = if (existing.isNotEmpty()) existing.joinToString(", ") else "none yet"
@@ -360,7 +366,8 @@ $numbered
 """.trimIndent()
 
         val response = LlmClient.generate(prompt, key, llmUrl())
-        val json = LlmClient.extractJsonFromResponse(response) ?: return emptyMap()
+        val json = LlmClient.extractJsonFromResponse(response)
+            ?: error("The LLM answer contained no JSON: ${response.take(120)}")
         val jsonObj = org.json.JSONObject(json)
 
         val result = mutableMapOf<Int, String>()
@@ -371,6 +378,7 @@ $numbered
             if (entry != null) commonNameDao.update(entry.copy(usageCount = entry.usageCount + 1))
             else commonNameDao.insert(CommonName(name = commonName))
         }
+        if (result.isEmpty()) error("The LLM returned no names")
         return result
     }
 
@@ -378,8 +386,8 @@ $numbered
      * Resolves common names for items that are still in the review stage (not yet in DB).
      * Returns a map of 1-based index → common name for the caller to apply to local state.
      */
-    suspend fun resolveNamesForReview(names: List<String>): Map<Int, String> =
-        try { callLlmForCommonNames(names) } catch (_: Exception) { emptyMap() }
+    suspend fun resolveNamesForReview(names: List<String>): Result<Map<Int, String>> =
+        runCatching { callLlmForCommonNames(names) }
 
     /**
      * Uses the LLM to assign a short common name to each receipt item.
@@ -389,58 +397,17 @@ $numbered
      * - Each item's [ReceiptItem.category] column is updated with the resolved name.
      * Returns a map of itemId → resolved common name.
      */
-    suspend fun resolveCommonNamesWithLlm(items: List<ReceiptItem>): Map<Long, String> {
-        val key = llmApiKey.value
-        if (key.isBlank() || items.isEmpty()) return emptyMap()
-        val url = llmUrl()
-        val commonNameDao = db.commonNameDao()
-        val receiptDao = db.receiptDao()
-
-        val existing = commonNameDao.getAll().map { it.name }
-        val existingList = if (existing.isNotEmpty()) existing.joinToString(", ") else "none yet"
-        val numbered = items.mapIndexed { i, item -> "${i + 1}. ${item.name}" }.joinToString("\n")
-
-        val prompt = """
-You are a receipt item name normalizer.
-Known common names already in the database: $existingList
-
-For each numbered receipt item below, assign a short human-readable common name in English.
-PREFER to reuse a name from the known list when it clearly fits.
-When none fit, propose a concise new name (2–4 words, lowercase, e.g. "whole milk", "sourdough bread", "chicken breast").
-
-Return ONLY a JSON object mapping each item number (as a string key) to its common name.
-Example: {"1": "whole milk", "2": "sourdough bread", "3": "orange juice"}
-
-Items:
-$numbered
-""".trimIndent()
-
-        return try {
-            val response = LlmClient.generate(prompt, key, url)
-            val json = LlmClient.extractJsonFromResponse(response) ?: return emptyMap()
-            val jsonObj = org.json.JSONObject(json)
-
-            val result = mutableMapOf<Long, String>()
-            items.forEachIndexed { i, item ->
-                val commonName = jsonObj.optString("${i + 1}").takeIf { it.isNotBlank() } ?: return@forEachIndexed
-                result[item.id] = commonName
-
-                // Persist to common_names table
-                val existingEntry = commonNameDao.findByName(commonName)
-                if (existingEntry != null) {
-                    commonNameDao.update(existingEntry.copy(usageCount = existingEntry.usageCount + 1))
-                } else {
-                    commonNameDao.insert(CommonName(name = commonName))
-                }
-
+    suspend fun resolveCommonNamesWithLlm(items: List<ReceiptItem>): Result<Map<Long, String>> =
+        runCatching {
+            val byIndex = callLlmForCommonNames(items.map { it.name })
+            val receiptDao = db.receiptDao()
+            items.withIndex().mapNotNull { (i, item) ->
+                val commonName = byIndex[i + 1] ?: return@mapNotNull null
                 // Write back to the receipt item's category field
                 receiptDao.updateItem(item.copy(category = commonName))
-            }
-            result
-        } catch (_: Exception) {
-            emptyMap()
+                item.id to commonName
+            }.toMap()
         }
-    }
 
     /** Reprocess a stored receipt's Level 0 JSON with any given processor config. */
     fun reprocessReceipt(receipt: Receipt, config: ProcessorConfig): ParsedReceipt {

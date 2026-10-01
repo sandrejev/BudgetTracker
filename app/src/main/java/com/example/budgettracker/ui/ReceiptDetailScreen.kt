@@ -66,9 +66,11 @@ fun ReceiptDetailScreen(
                                 if (!resolvingNames) {
                                     resolvingNames = true
                                     scope.launch {
-                                        viewModel.resolveCommonNamesWithLlm(items)
+                                        reprocessResult = viewModel.resolveCommonNamesWithLlm(items).fold(
+                                            onSuccess = { "✓ Common names resolved for ${it.size} of ${items.size} items" },
+                                            onFailure = { "Couldn't resolve names: ${it.message?.take(200)}" }
+                                        )
                                         resolvingNames = false
-                                        reprocessResult = "✓ Common names resolved"
                                     }
                                 }
                             },
